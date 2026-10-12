@@ -1,17 +1,41 @@
-MIT License
-
-Copyright (c) 2026 RealmsNetwork contributors
+RealmsNetwork Non-Commercial License
+Copyright (c) 2026 RealmsNetwork
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+of this software and associated documentation files (the "Software"), to use,
+copy, modify, and distribute the Software for personal, educational, or
+non-commercial purposes only, subject to the following conditions:
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+1. NON-COMMERCIAL USE ONLY
+   The Software may not be used, in whole or in part, for any commercial
+   purpose. Commercial purposes include but are not limited to: selling the
+   Software or derivatives of it, offering the Software as a paid service,
+   using the Software to generate revenue, or incorporating it into a
+   commercial product or service.
+
+2. NO MONETIZATION
+   You may not monetize the Software or any derivative works in any form,
+   including but not limited to: subscription fees, one-time payments,
+   donations tied to access, advertising revenue, or any other financial gain.
+
+3. NO RESELLING
+   You may not sell, sublicense, rent, lease, or otherwise transfer the
+   Software or any rights to it to any third party for compensation of
+   any kind.
+
+4. ATTRIBUTION
+   The above copyright notice and this license must be included in all
+   copies or substantial portions of the Software.
+
+5. DERIVATIVES
+   Modified versions of the Software must be distributed under this same
+   license and must clearly indicate that changes were made from the
+   original.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
