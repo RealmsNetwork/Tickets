@@ -130,4 +130,4 @@ npm run dev    # start with --watch for auto-restart
 
 ## License
 
-RealmsNetwork Non-Commercial License — free to use, modify, and self-host for non-commercial purposes. Commercial use, monetization, and reselling are not permitted. See [LICENSE](LICENSE) for full terms.
+[PolyForm Noncommercial 1.0](LICENSE) — free to use, modify, and self-host for non-commercial purposes. Commercial use, monetization, and reselling are not permitted.
