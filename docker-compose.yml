@@ -1,0 +1,12 @@
+services:
+  tickets:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      TICKETS_CONFIG: /app/config/settings.json
+      TICKETS_DATABASE: /app/data/tickets.sqlite
+    volumes:
+      - ./config:/app/config
+      - ./data:/app/data
+      - ./transcripts:/app/transcripts

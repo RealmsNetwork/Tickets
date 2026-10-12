@@ -1,0 +1,124 @@
+{
+  "app": {
+    "name": "RealmsNetwork Tickets",
+    "footer": "RealmsNetwork Support",
+    "supportUrl": "",
+    "locale": "en-US",
+    "defaultColor": "#6D5AE6"
+  },
+  "ticketing": {
+    "maxOpenPerUser": 3,
+    "creationCooldownSeconds": 20,
+    "queue": {
+      "enabled": false,
+      "strictOrder": true,
+      "staffCapacity": 3
+    },
+    "claims": {
+      "lockOwnerAfterClaim": false,
+      "allowUnclaimByClaimant": true,
+      "autoClaimOnFirstResponse": false
+    },
+    "workingHours": {
+      "enabled": false,
+      "timezone": "America/Detroit",
+      "allowOutsideHours": false,
+      "schedule": {
+        "Monday": "09:00-17:00",
+        "Tuesday": "09:00-17:00",
+        "Wednesday": "09:00-17:00",
+        "Thursday": "09:00-17:00",
+        "Friday": "09:00-17:00",
+        "Saturday": "",
+        "Sunday": ""
+      }
+    },
+    "inactivityMonitor": {
+      "enabled": false,
+      "checkIntervalMinutes": 5,
+      "alertAfterMinutes": 60,
+      "mentionRoleIds": []
+    },
+    "transcripts": {
+      "maxMessages": 500,
+      "dmOwnerOnClose": true,
+      "saveLocalCopy": false
+    },
+    "categories": [
+      {
+        "id": "general",
+        "name": "General Support",
+        "description": "Questions and general help",
+        "emoji": "🎫",
+        "parentCategoryId": "",
+        "logsChannelId": "",
+        "supportRoleIds": [],
+        "requiredRoleIds": [],
+        "questions": [
+          { "label": "What do you need help with?", "required": true, "style": "paragraph" }
+        ]
+      },
+      {
+        "id": "technical",
+        "name": "Technical Support",
+        "description": "Report a technical problem",
+        "emoji": "🛠️",
+        "parentCategoryId": "",
+        "logsChannelId": "",
+        "supportRoleIds": [],
+        "requiredRoleIds": [],
+        "questions": [
+          { "label": "What happened? Include any error message.", "required": true, "style": "paragraph" },
+          { "label": "When did it start?", "required": false, "style": "short" }
+        ]
+      },
+      {
+        "id": "billing",
+        "name": "Billing and Purchases",
+        "description": "Questions about purchases or payments",
+        "emoji": "🧾",
+        "parentCategoryId": "",
+        "logsChannelId": "",
+        "supportRoleIds": [],
+        "requiredRoleIds": [],
+        "questions": [
+          { "label": "Describe the issue. Do not include card details or passwords.", "required": true, "style": "paragraph" }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "staffRoleIds": [],
+    "adminRoleIds": []
+  },
+  "channels": {
+    "ticketLogsId": "",
+    "suggestionsId": "",
+    "reviewsId": ""
+  },
+  "features": {
+    "suggestions": true,
+    "reviews": true,
+    "aiCloseSummaries": false,
+    "dashboard": false
+  },
+  "priorityLevels": [
+    { "id": "low", "label": "Low", "rank": 1, "emoji": "🟢" },
+    { "id": "normal", "label": "Normal", "rank": 2, "emoji": "🔵" },
+    { "id": "high", "label": "High", "rank": 3, "emoji": "🟠" },
+    { "id": "urgent", "label": "Urgent", "rank": 4, "emoji": "🔴" }
+  ],
+  "tags": {
+    "faq": "A frequently asked question.",
+    "connection": "Connection troubleshooting steps.",
+    "account": "Account help and recovery guidance."
+  },
+  "suggestions": {
+    "allowVoting": true,
+    "allowStaffDecisions": true
+  },
+  "privacy": {
+    "deleteTranscriptsAfterDays": 0,
+    "storeMessageBodies": false
+  }
+}

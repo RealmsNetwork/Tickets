@@ -1,0 +1,11 @@
+node_modules/
+.env
+config/settings.json
+config/*.local.json
+data/*.sqlite
+data/*.sqlite-shm
+data/*.sqlite-wal
+transcripts/
+coverage/
+.DS_Store
+*.log
