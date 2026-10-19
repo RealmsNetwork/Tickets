@@ -50,7 +50,7 @@ client.on(Events.MessageCreate, async (message) => {
   if (!message.guild || message.author.bot) return;
   try {
     const ticket = db.getTicketByChannel(message.channel.id);
-    if (ticket) await markActivity({ ticket, author: message.member ?? message.author, db, config });
+    if (ticket) await markActivity({ ticket, author: message.member ?? message.author, db, config, guild: message.guild });
   } catch (error) {
     console.error('[messageCreate] Could not update ticket activity:', error);
   }
