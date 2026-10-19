@@ -3,8 +3,10 @@ export function getPriorityLevel(priorityId, priorityLevels = []) {
 }
 
 export function getPriorityRank(priorityId, priorityLevels = []) {
-  const rank = Number(getPriorityLevel(priorityId, priorityLevels)?.rank ?? 0);
-  return Number.isFinite(rank) ? rank : 0;
+  const index = priorityLevels.findIndex((level) => level.id === priorityId);
+  if (index < 0) return 0;
+  const configuredRank = Number(priorityLevels[index].rank);
+  return Number.isFinite(configuredRank) ? configuredRank : index + 1;
 }
 
 export function formatPriority(priorityId, priorityLevels = []) {
