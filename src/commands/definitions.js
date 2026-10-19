@@ -1,8 +1,9 @@
 import { SlashCommandBuilder } from 'discord.js';
+import { getPriorityRank } from '../utils/priority.js';
 
 export function buildCommands(config) {
   const categoryChoices = config.ticketing.categories.slice(0, 25).map((item) => ({ name: item.name, value: item.id }));
-  const priorities = config.priorityLevels.slice(0, 25).map((item) => ({ name: `${item.emoji ?? ''} ${item.label}`.trim(), value: item.id }));
+  const priorities = [...config.priorityLevels].sort((a, b) => getPriorityRank(b.id, config.priorityLevels) - getPriorityRank(a.id, config.priorityLevels)).slice(0, 25).map((item) => ({ name: `${item.emoji ?? ''} ${item.label}`.trim(), value: item.id }));
   const commands = [
     new SlashCommandBuilder().setName('ping').setDescription('Check the bot response time.'),
     new SlashCommandBuilder().setName('help').setDescription('Show the support bot command guide.'),
