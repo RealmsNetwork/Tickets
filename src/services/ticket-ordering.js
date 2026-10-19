@@ -35,7 +35,7 @@ export function buildPriorityPositionUpdates(entries, priorityLevels = []) {
   return updates;
 }
 
-export async function sortTicketChannelsByPriority({ guild, db, config }) {
+async function sortTicketChannelsByPriorityOnce({ guild, db, config }) {
   const tickets = db.ticketsForGuild(guild.id);
   const entries = tickets.map((ticket) => ({
     ticket,
@@ -45,4 +45,33 @@ export async function sortTicketChannelsByPriority({ guild, db, config }) {
   const updates = buildPriorityPositionUpdates(entries, config.priorityLevels);
   if (updates.length) await guild.channels.setPositions(updates);
   return updates.length;
+}
+
+const inFlightSorts = new Map();
+
+/**
+ * Serialize position edits per guild so concurrent ticket changes cannot leave
+ * the visible order reflecting an older priority snapshot.
+ */
+export function sortTicketChannelsByPriority(args) {
+  const guildId = String(args.guild.id);
+  const inFlight = inFlightSorts.get(guildId);
+  if (inFlight) {
+    inFlight.dirty = true;
+    return inFlight.promise;
+  }
+
+  const state = { dirty: false, promise: null };
+  state.promise = (async () => {
+    let changed = 0;
+    do {
+      state.dirty = false;
+      changed = await sortTicketChannelsByPriorityOnce(args);
+    } while (state.dirty);
+    return changed;
+  })().finally(() => {
+    if (inFlightSorts.get(guildId) === state) inFlightSorts.delete(guildId);
+  });
+  inFlightSorts.set(guildId, state);
+  return state.promise;
 }
