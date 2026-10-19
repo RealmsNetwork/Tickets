@@ -2,6 +2,7 @@ import 'dotenv/config';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { addMissingDefaults } from './utils/settings-migration.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const configPath = path.resolve(root, process.env.TICKETS_CONFIG || './config/settings.json');
@@ -18,6 +19,16 @@ try {
   settings = JSON.parse(fs.readFileSync(configPath, 'utf8'));
 } catch (error) {
   throw new Error(`Unable to read JSON settings at ${configPath}: ${error.message}`);
+}
+
+const sampleSettings = JSON.parse(fs.readFileSync(examplePath, 'utf8'));
+if (addMissingDefaults(settings, sampleSettings)) {
+  fs.writeFileSync(configPath, `${JSON.stringify(settings, null, 2)}\n`, 'utf8');
+  console.info(`[config] Migrated ${path.relative(root, configPath)} with missing defaults.`);
+}
+
+if (typeof settings?.ticketing?.channelPrefix !== 'string') {
+  throw new Error('settings.ticketing.channelPrefix must be a string.');
 }
 
 const categories = settings?.ticketing?.categories;
