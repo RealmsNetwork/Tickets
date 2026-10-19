@@ -187,7 +187,9 @@ export async function claimTicket({ ticket, channel, member, db, config, allowQu
   if (config.ticketing.claims?.lockOwnerAfterClaim) {
     await channel.permissionOverwrites.edit(ticket.owner_id, { SendMessages: false }).catch(() => {});
   }
-  await channel.send({ embeds: [new EmbedBuilder().setColor(config.app.defaultColor || '#6D5AE6').setDescription(`🙋 This ticket was claimed by <@${memberId(member)}>.`)], allowedMentions: { users: [memberId(member)] } });
+  await channel.send({ embeds: [new EmbedBuilder().setColor(config.app.defaultColor || '#6D5AE6').setDescription(`🙋 This ticket was claimed by <@${memberId(member)}>.`)], allowedMentions: { users: [memberId(member)] } }).catch((error) => {
+    console.warn(`[tickets] Unable to post claim announcement for #${ticket.id}: ${error.message}`);
+  });
   await syncTicketPresentation({ guild: channel.guild, db, config, sortChannels: false });
   return db.getTicketById(ticket.id);
 }
@@ -204,7 +206,9 @@ export async function unclaimTicket({ ticket, channel, member, db, config }) {
   db.updateTicket(ticket.id, { claimed_by: null, status: config.ticketing.queue?.enabled ? 'queued' : 'open', last_activity_at: Date.now() });
   db.logStaffEvent({ guildId: ticket.guild_id, ticketId: ticket.id, staffId: memberId(member), action: 'unclaim' });
   if (config.ticketing.claims?.lockOwnerAfterClaim) await channel.permissionOverwrites.edit(ticket.owner_id, { SendMessages: true }).catch(() => {});
-  await channel.send(`Ticket #${ticket.id} is back in the available queue. Previously claimed by <@${old}>.`);
+  await channel.send(`Ticket #${ticket.id} is back in the available queue. Previously claimed by <@${old}>.`).catch((error) => {
+    console.warn(`[tickets] Unable to post unclaim announcement for #${ticket.id}: ${error.message}`);
+  });
   await syncTicketPresentation({ guild: channel.guild, db, config, sortChannels: false });
 }
 
@@ -299,7 +303,9 @@ export async function reopenTicket({ ticket, channel, member, db, config }) {
   for (const userId of db.listParticipants(ticket.id)) {
     if (userId !== ticket.owner_id) await channel.permissionOverwrites.edit(userId, { ViewChannel: true, SendMessages: true, ReadMessageHistory: true }).catch(() => {});
   }
-  await channel.send(`🔓 Ticket #${ticket.id} was reopened by <@${memberId(member)}>. Status: **${nextStatus}**.`);
+  await channel.send(`🔓 Ticket #${ticket.id} was reopened by <@${memberId(member)}>. Status: **${nextStatus}**.`).catch((error) => {
+    console.warn(`[tickets] Unable to post reopen announcement for #${ticket.id}: ${error.message}`);
+  });
   await syncTicketPresentation({ guild: channel.guild, db, config });
   return db.getTicketById(ticket.id);
 }
@@ -358,7 +364,9 @@ export async function setCategory({ ticket, channel, member, categoryId, db, con
   await channel.setName(ticketChannelName(config, next, ticket.id, ownerName)).catch((error) => {
     console.warn(`[tickets] Unable to apply category prefix for ticket #${ticket.id}: ${error.message}`);
   });
-  await channel.send(`Ticket category changed to **${next.name}** by <@${memberId(member)}>.`);
+  await channel.send(`Ticket category changed to **${next.name}** by <@${memberId(member)}>.`).catch((error) => {
+    console.warn(`[tickets] Unable to post category-change announcement for #${ticket.id}: ${error.message}`);
+  });
   await syncTicketPresentation({ guild: channel.guild, db, config });
   return db.getTicketById(ticket.id);
 }
