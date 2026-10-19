@@ -495,9 +495,44 @@ async function handleModal(interaction) {
     }
     if (!reviewGuildId) throw new Error('The ticket was removed and this older review form no longer identifies its server. Please ask support for a fresh review link.');
 
-    const comment = interaction.fields.getTextInputValue('comment') || '';
-    db.saveReview({ ticketId, guildId: reviewGuildId, userId: user.id, rating, comment: truncate(comment, 900) });
-    return interaction.reply({ content: `Thanks for rating ticket #${ticketId}: ${'⭐'.repeat(rating)} (${rating}/5). Your feedback has been saved.`, ...ephemeral });
+    const comment = truncate(interaction.fields.getTextInputValue('comment') || '', 900);
+    db.saveReview({ ticketId, guildId: reviewGuildId, userId: user.id, rating, comment });
+
+    // Persist the rating first. A missing/permission-locked public channel must not
+    // discard the user's review.
+    let postedToReviews = false;
+    const reviewsChannelId = config.channels?.reviewsId;
+    if (reviewsChannelId) {
+      const reviewGuild = client.guilds.cache.get(reviewGuildId)
+        ?? await client.guilds.fetch(reviewGuildId).catch(() => null);
+      const reviewsChannel = reviewGuild
+        ? await reviewGuild.channels.fetch(reviewsChannelId).catch(() => null)
+        : null;
+      if (reviewsChannel?.isTextBased?.() && typeof reviewsChannel.send === 'function') {
+        const reviewEmbed = new EmbedBuilder()
+          .setColor(config.app.defaultColor || '#8B5CF6')
+          .setTitle(`Support review · Ticket #${ticketId}`)
+          .setDescription(comment || 'No written feedback was provided.')
+          .addFields(
+            { name: 'Rating', value: `${'⭐'.repeat(rating)} (${rating}/5)`, inline: true },
+            { name: 'Ticket', value: `#${ticketId}`, inline: true },
+            { name: 'Submitted by', value: user.username || 'Ticket owner', inline: true }
+          )
+          .setFooter({ text: config.app.footer || config.app.name || 'Support' })
+          .setTimestamp();
+        try {
+          await reviewsChannel.send({ embeds: [reviewEmbed], allowedMentions: { parse: [] } });
+          postedToReviews = true;
+        } catch (error) {
+          console.warn(`[reviews] Rating for ticket #${ticketId} was saved, but posting failed: ${error.message}`);
+        }
+      }
+    }
+
+    const status = postedToReviews
+      ? 'Your rating was saved and posted to the reviews channel.'
+      : 'Your rating was saved, but the reviews channel could not be reached. Check channels.reviewsId and the bot permissions.';
+    return interaction.reply({ content: `Thanks for rating ticket #${ticketId}: ${'⭐'.repeat(rating)} (${rating}/5). ${status}`, ...ephemeral });
   }
 }
 
