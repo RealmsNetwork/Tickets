@@ -10,6 +10,7 @@ import { safeChannelName, truncate } from '../utils/text.js';
 import { categoryForTicket, hasRequiredRoles, isAdmin, isStaff, memberId } from './permissions.js';
 import { isWithinWorkingHours } from './schedule.js';
 import { formatPriority } from '../utils/priority.js';
+import { buildTicketChannelName, getConfiguredChannelPrefix } from '../utils/ticket-channel-name.js';
 import { syncTicketPresentation } from './ticket-presentation.js';
 
 const activeStatuses = new Set(['open', 'queued']);
@@ -17,15 +18,8 @@ export function getCategory(config, categoryId) {
   return config.ticketing.categories.find((category) => category.id === categoryId) ?? null;
 }
 
-function getChannelPrefix(config, category) {
-  const categoryPrefix = category?.channelPrefix;
-  if (typeof categoryPrefix === 'string' && categoryPrefix.trim()) return categoryPrefix;
-  return config.ticketing.channelPrefix ?? 'ticket-';
-}
-
 function ticketChannelName(config, category, ticketId, username) {
-  const idPart = ticketId === null || ticketId === undefined ? '' : `${ticketId}-`;
-  return safeChannelName(`${getChannelPrefix(config, category)}${idPart}${username || 'member'}`).slice(0, 100);
+  return buildTicketChannelName(getConfiguredChannelPrefix(config, category), username, ticketId);
 }
 
 async function updateOpeningTicketPriority(channel, ticket, priority, config, db) {
