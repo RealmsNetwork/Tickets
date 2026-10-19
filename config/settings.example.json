@@ -7,6 +7,7 @@
     "defaultColor": "#6D5AE6"
   },
   "ticketing": {
+    "channelPrefix": "ticket-",
     "maxOpenPerUser": 3,
     "creationCooldownSeconds": 20,
     "queue": {
