@@ -38,7 +38,8 @@ export class Database {
         close_reason TEXT,
         last_activity_at INTEGER NOT NULL,
         inactivity_alerted_at INTEGER,
-        transcript_path TEXT
+        transcript_path TEXT,
+        opening_message_id TEXT
       );
       CREATE INDEX IF NOT EXISTS idx_tickets_owner_status ON tickets(guild_id, owner_id, status);
       CREATE INDEX IF NOT EXISTS idx_tickets_queue ON tickets(guild_id, status, priority, created_at);
@@ -139,6 +140,9 @@ export class Database {
     if (!ticketColumns.has('transcript_path')) {
       this.sqlite.exec('ALTER TABLE tickets ADD COLUMN transcript_path TEXT');
     }
+    if (!ticketColumns.has('opening_message_id')) {
+      this.sqlite.exec('ALTER TABLE tickets ADD COLUMN opening_message_id TEXT');
+    }
   }
 
   createTicket(data) {
@@ -178,7 +182,7 @@ export class Database {
   }
 
   updateTicket(id, patch) {
-    const allowed = new Set(['status','priority','tags_json','intake_json','claimed_by','first_response_at','closed_at','closed_by','close_reason','last_activity_at','inactivity_alerted_at','transcript_path']);
+    const allowed = new Set(['status','priority','tags_json','intake_json','claimed_by','first_response_at','closed_at','closed_by','close_reason','last_activity_at','inactivity_alerted_at','transcript_path','opening_message_id']);
     const entries = Object.entries(patch).filter(([key]) => allowed.has(key));
     if (!entries.length) return this.getTicketById(id);
     const sql = entries.map(([key]) => `${key}=@${key}`).join(', ');
