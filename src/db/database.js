@@ -101,7 +101,7 @@ export class Database {
 
       CREATE TABLE IF NOT EXISTS reviews (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        ticket_id INTEGER NOT NULL UNIQUE REFERENCES tickets(id) ON DELETE CASCADE,
+        ticket_id INTEGER NOT NULL UNIQUE,
         guild_id TEXT NOT NULL,
         user_id TEXT NOT NULL,
         rating INTEGER NOT NULL CHECK(rating BETWEEN 1 AND 5),
@@ -133,6 +133,26 @@ export class Database {
         paid_at INTEGER
       );
     `);
+    // Keep review history independent from ticket-channel deletion. Older versions
+    // cascaded reviews away whenever a ticket record was deleted.
+    const reviewForeignKeys = this.sqlite.pragma('foreign_key_list(reviews)');
+    if (reviewForeignKeys.length) {
+      this.sqlite.exec(`
+        ALTER TABLE reviews RENAME TO reviews_legacy;
+        CREATE TABLE reviews (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          ticket_id INTEGER NOT NULL UNIQUE,
+          guild_id TEXT NOT NULL,
+          user_id TEXT NOT NULL,
+          rating INTEGER NOT NULL CHECK(rating BETWEEN 1 AND 5),
+          comment TEXT NOT NULL DEFAULT '',
+          created_at INTEGER NOT NULL
+        );
+        INSERT INTO reviews (id, ticket_id, guild_id, user_id, rating, comment, created_at)
+          SELECT id, ticket_id, guild_id, user_id, rating, comment, created_at FROM reviews_legacy;
+        DROP TABLE reviews_legacy;
+      `);
+    }
     const ticketColumns = new Set(this.sqlite.pragma('table_info(tickets)').map((column) => column.name));
     if (!ticketColumns.has('inactivity_alerted_at')) {
       this.sqlite.exec('ALTER TABLE tickets ADD COLUMN inactivity_alerted_at INTEGER');
