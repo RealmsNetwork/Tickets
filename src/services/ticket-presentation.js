@@ -14,7 +14,7 @@ export async function syncTicketPresentation({ guild, db, config, sortChannels =
   for (let index = 0; index < results.length; index += 1) {
     const result = results[index];
     if (result.status === 'rejected') {
-      console.warn(\`[ticket-presentation] Unable to update \${jobs[index][0]} for guild \${guild.id}: \${result.reason?.message ?? result.reason}\`);
+      console.warn(`[ticket-presentation] Unable to update ${jobs[index][0]} for guild ${guild.id}: ${result.reason?.message ?? result.reason}`);
     }
   }
   return results.every((result) => result.status === 'fulfilled');
