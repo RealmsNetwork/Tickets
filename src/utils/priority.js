@@ -4,8 +4,10 @@ export function getPriorityLevel(priorityId, priorityLevels = []) {
 
 export function getPriorityRank(priorityId, priorityLevels = []) {
   const index = priorityLevels.findIndex((level) => level.id === priorityId);
-  if (index < 0) return 0;
-  const configuredRank = Number(priorityLevels[index].rank);
+  if (index < 0) return Number.NEGATIVE_INFINITY;
+  const configured = priorityLevels[index].rank;
+  if (configured === undefined || configured === null) return index + 1;
+  const configuredRank = Number(configured);
   return Number.isFinite(configuredRank) ? configuredRank : index + 1;
 }
 
