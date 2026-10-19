@@ -16,7 +16,7 @@ export function getConfiguredChannelPrefix(config, category) {
  */
 export function buildTicketChannelName(prefix, username, ticketId = null) {
   const safePrefix = slug(prefix);
-  const safeOwner = slug(username) || 'member';
+  const safeOwner = slug(username) || 'ticket';
   const idPart = ticketId === null || ticketId === undefined ? '' : String(ticketId).replace(/[^0-9]/g, '');
   const suffix = [idPart, safeOwner].filter(Boolean).join('-');
   const prefixBudget = Math.max(0, 90 - suffix.length - (safePrefix ? 1 : 0));
