@@ -417,19 +417,25 @@ export async function markActivity({ ticket, author, db, config, guild = null })
 }
 
 export async function takeNextQueuedTicket({ guild, member, db, config }) {
-  const queue = db.queueList(guild.id, config.priorityLevels).filter((item) => isStaff(member, config, categoryForTicket(item, config)));
-  if (!queue.length) {
-    if (!isStaff(member, config)) throw new Error('Only support staff can take queued tickets.');
-    throw new Error('There are no queued tickets assigned to a support category you can access.');
+  while (true) {
+    const queue = db.queueList(guild.id, config.priorityLevels)
+      .filter((item) => isStaff(member, config, categoryForTicket(item, config)));
+    if (!queue.length) {
+      if (!isStaff(member, config)) throw new Error('Only support staff can take queued tickets.');
+      throw new Error('There are no queued tickets assigned to a support category you can access.');
+    }
+
+    const ticket = queue[0];
+    const channel = await guild.channels.fetch(ticket.channel_id).catch(() => null);
+    if (!channel) {
+      db.updateTicket(ticket.id, { status: 'closed', closed_at: Date.now(), close_reason: 'Ticket channel was missing during queue processing.' });
+      await syncTicketPresentation({ guild, db, config });
+      continue;
+    }
+
+    const claimed = await claimTicket({ ticket, channel, member, db, config, allowQueueJump: true });
+    return { ticket: claimed, channel, position: 1 };
   }
-  const ticket = queue[0];
-  const channel = await guild.channels.fetch(ticket.channel_id).catch(() => null);
-  if (!channel) {
-    db.updateTicket(ticket.id, { status: 'closed', closed_at: Date.now(), close_reason: 'Ticket channel was missing during queue processing.' });
-    return takeNextQueuedTicket({ guild, member, db, config });
-  }
-  const claimed = await claimTicket({ ticket, channel, member, db, config, allowQueueJump: true });
-  return { ticket: claimed, channel, position: 1 };
 }
 
 export function listQueue(db, guildId, config) {
