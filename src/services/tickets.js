@@ -28,18 +28,25 @@ function ticketChannelName(config, category, ticketId, username) {
   return safeChannelName(`${getChannelPrefix(config, category)}${idPart}${username || 'member'}`).slice(0, 100);
 }
 
-async function updateOpeningTicketPriority(channel, ticketId, priority, config) {
+async function updateOpeningTicketPriority(channel, ticket, priority, config, db) {
   try {
-    const messages = await channel.messages.fetch({ limit: 100 });
-    const opening = [...messages.values()].find((message) => message.author.id === channel.client.user.id
-      && message.embeds.some((embed) => embed.fields?.some((field) => field.name === 'Ticket' && field.value === `#${ticketId}`)));
+    let opening = null;
+    if (ticket.opening_message_id) {
+      opening = await channel.messages.fetch(ticket.opening_message_id).catch(() => null);
+    }
     if (!opening) {
-      console.warn(`[tickets] Could not find the opening embed for ticket #${ticketId} to refresh its priority.`);
+      const messages = await channel.messages.fetch({ limit: 100 });
+      opening = [...messages.values()].find((message) => message.author.id === channel.client.user.id
+        && message.embeds.some((embed) => embed.fields?.some((field) => field.name === 'Ticket' && field.value === `#${ticket.id}`)));
+    }
+    if (!opening) {
+      console.warn(`[tickets] Could not find the opening embed for ticket #${ticket.id} to refresh its priority.`);
       return false;
     }
+    if (!ticket.opening_message_id) db.updateTicket(ticket.id, { opening_message_id: opening.id });
 
     const embeds = opening.embeds.map((existing) => {
-      if (!existing.fields?.some((field) => field.name === 'Ticket' && field.value === `#${ticketId}`)) return EmbedBuilder.from(existing);
+      if (!existing.fields?.some((field) => field.name === 'Ticket' && field.value === `#${ticket.id}`)) return EmbedBuilder.from(existing);
       const embed = EmbedBuilder.from(existing);
       embed.setFields(existing.fields.map((field) => field.name === 'Priority'
         ? { name: field.name, value: formatPriority(priority, config.priorityLevels), inline: field.inline }
@@ -49,7 +56,7 @@ async function updateOpeningTicketPriority(channel, ticketId, priority, config) 
     await opening.edit({ embeds });
     return true;
   } catch (error) {
-    console.warn(`[tickets] Unable to update the opening embed for ticket #${ticketId}: ${error.message}`);
+    console.warn(`[tickets] Unable to update the opening embed for ticket #${ticket.id}: ${error.message}`);
     return false;
   }
 }
@@ -123,7 +130,8 @@ export async function createTicket({ guild, user, member, categoryId, answers, d
       new ButtonBuilder().setCustomId('ticket:close').setLabel('Close').setStyle(ButtonStyle.Secondary).setEmoji('🔒')
     );
     const roleMentions = (category.supportRoleIds ?? []).filter((id) => guild.roles.cache.has(id)).map((id) => `<@&${id}>`).join(' ');
-    await channel.send({ content: [roleMentions, `<@${user.id}>`].filter(Boolean).join(' '), embeds: [embed], components: [buttons], allowedMentions: { users: [user.id], roles: category.supportRoleIds ?? [] } });
+    const openingMessage = await channel.send({ content: [roleMentions, `<@${user.id}>`].filter(Boolean).join(' '), embeds: [embed], components: [buttons], allowedMentions: { users: [user.id], roles: category.supportRoleIds ?? [] } });
+    db.updateTicket(ticket.id, { opening_message_id: openingMessage.id });
     await syncTicketPresentation({ guild, db, config });
     return { ticket, channel };
   } catch (error) {
@@ -328,7 +336,7 @@ export async function setPriority({ ticket, channel, member, priority, db, confi
   const configured = config.priorityLevels ?? [];
   if (!configured.some((item) => item.id === priority)) throw new Error('That priority is not configured.');
   const updated = db.updateTicket(ticket.id, { priority, last_activity_at: Date.now() });
-  await updateOpeningTicketPriority(channel, ticket.id, priority, config);
+  await updateOpeningTicketPriority(channel, ticket, priority, config, db);
   await channel.send(`Ticket #${ticket.id} priority changed to **${formatPriority(priority, configured)}** by <@${memberId(member)}>.`).catch((error) => {
     console.warn(`[tickets] Unable to post priority change for ticket #${ticket.id}: ${error.message}`);
   });
