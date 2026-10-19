@@ -281,6 +281,7 @@ export async function closeTicket({ ticket, channel, member, reason = 'No reason
       }).catch(() => {});
     }
   }
+  await syncTicketPresentation({ guild, db, config });
   return { ticket: db.getTicketById(ticket.id), transcript, summary };
 }
 
@@ -317,6 +318,7 @@ export async function deleteTicket({ ticket, channel, member, db, config, guild 
   }
   await channel.delete(`Ticket #${ticket.id} deleted by ${member.user?.tag || memberId(member)}`);
   db.deleteTicket(ticket.id);
+  await syncTicketPresentation({ guild, db, config });
   return ticket.id;
 }
 
@@ -325,9 +327,13 @@ export async function setPriority({ ticket, channel, member, priority, db, confi
   if (!isStaff(member, config, category)) throw new Error('Only support staff can change priority.');
   const configured = config.priorityLevels ?? [];
   if (!configured.some((item) => item.id === priority)) throw new Error('That priority is not configured.');
-  db.updateTicket(ticket.id, { priority, last_activity_at: Date.now() });
-  await channel.send(`Priority for ticket #${ticket.id} was changed to **${priority}** by <@${memberId(member)}>.`);
-  return db.getTicketById(ticket.id);
+  const updated = db.updateTicket(ticket.id, { priority, last_activity_at: Date.now() });
+  await updateOpeningTicketPriority(channel, ticket.id, priority, config);
+  await channel.send(`Ticket #${ticket.id} priority changed to **${formatPriority(priority, configured)}** by <@${memberId(member)}>.`).catch((error) => {
+    console.warn(`[tickets] Unable to post priority change for ticket #${ticket.id}: ${error.message}`);
+  });
+  await syncTicketPresentation({ guild: channel.guild, db, config });
+  return updated;
 }
 
 export async function setCategory({ ticket, channel, member, categoryId, db, config }) {
@@ -346,7 +352,12 @@ export async function setCategory({ ticket, channel, member, categoryId, db, con
     if (channel.guild.roles.cache.has(roleId)) await channel.permissionOverwrites.edit(roleId, { ViewChannel: true, SendMessages: true, ReadMessageHistory: true }).catch(() => {});
   }
   db.updateTicket(ticket.id, { category_id: next.id, last_activity_at: Date.now() });
+  const ownerName = (await channel.guild.client.users.fetch(ticket.owner_id).catch(() => null))?.username || 'member';
+  await channel.setName(ticketChannelName(config, next, ticket.id, ownerName)).catch((error) => {
+    console.warn(`[tickets] Unable to apply category prefix for ticket #${ticket.id}: ${error.message}`);
+  });
   await channel.send(`Ticket category changed to **${next.name}** by <@${memberId(member)}>.`);
+  await syncTicketPresentation({ guild: channel.guild, db, config });
   return db.getTicketById(ticket.id);
 }
 
@@ -438,6 +449,5 @@ export async function runInactivityMonitor(client) {
 
 export function formatTicketSummary(ticket, config) {
   const category = getCategory(config, ticket.category_id);
-  const priority = config.priorityLevels.find((level) => level.id === ticket.priority);
-  return `#${ticket.id} · ${category?.name ?? ticket.category_id} · ${priority?.emoji ?? ''} ${ticket.priority} · <@${ticket.owner_id}>`;
+  return `#${ticket.id} · ${category?.name ?? ticket.category_id} · ${formatPriority(ticket.priority, config.priorityLevels)} · <@${ticket.owner_id}>`;
 }
