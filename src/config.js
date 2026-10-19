@@ -31,6 +31,27 @@ if (typeof settings?.ticketing?.channelPrefix !== 'string') {
   throw new Error('settings.ticketing.channelPrefix must be a string.');
 }
 
+const queueDisplay = settings?.ticketing?.queue?.display;
+if (queueDisplay?.enabled) {
+  if (!settings.ticketing.queue?.enabled) {
+    throw new Error('ticketing.queue.display.enabled requires ticketing.queue.enabled to be true.');
+  }
+  if (!/^\d{17,20}$/.test(String(queueDisplay.channelId ?? ''))) {
+    throw new Error('ticketing.queue.display.channelId must be a valid Discord channel ID when the queue display is enabled.');
+  }
+  if ((queueDisplay.type ?? 'embed') !== 'embed') {
+    throw new Error('ticketing.queue.display.type currently supports only "embed".');
+  }
+  const refreshSeconds = Number(queueDisplay.refreshIntervalSeconds ?? 60);
+  if (!Number.isFinite(refreshSeconds) || refreshSeconds < 15 || refreshSeconds > 86400) {
+    throw new Error('ticketing.queue.display.refreshIntervalSeconds must be between 15 and 86400.');
+  }
+  const maxTickets = Number(queueDisplay.maxTickets ?? 15);
+  if (!Number.isInteger(maxTickets) || maxTickets < 1 || maxTickets > 25) {
+    throw new Error('ticketing.queue.display.maxTickets must be an integer between 1 and 25.');
+  }
+}
+
 const categories = settings?.ticketing?.categories;
 if (!Array.isArray(categories) || categories.length < 1) {
   throw new Error('settings.ticketing.categories must contain at least one category.');
@@ -46,6 +67,9 @@ for (const category of categories) {
   }
   if (categoryIds.has(category.id)) throw new Error(`Duplicate ticket category id: ${category.id}`);
   categoryIds.add(category.id);
+  if (category.channelPrefix !== undefined && typeof category.channelPrefix !== 'string') {
+    throw new Error(`Category ${category.id} channelPrefix must be a string.`);
+  }
   if (!Array.isArray(category.questions)) category.questions = [];
   if (category.questions.length > 3) category.questions = category.questions.slice(0, 3);
   for (const question of category.questions) {
