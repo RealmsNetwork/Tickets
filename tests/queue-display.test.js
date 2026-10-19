@@ -115,3 +115,76 @@ test('refresh recreates and stores a message that was deleted', async () => {
   assert.equal(saved.messageId, createdMessage.id);
   assert.match(stored.embeds[0].toJSON().description, /no tickets waiting/);
 });
+
+test('concurrent refreshes reuse one message creation and publish the latest state', async () => {
+  let stored = null;
+  let sendCalls = 0;
+  let editCalls = 0;
+  let startSend;
+  let releaseSend;
+  const sendStarted = new Promise((resolve) => { startSend = resolve; });
+  const sendGate = new Promise((resolve) => { releaseSend = resolve; });
+  const createdMessage = {
+    id: '99999999999999999',
+    async edit() { editCalls += 1; }
+  };
+  const channel = {
+    id: config.ticketing.queue.display.channelId,
+    isTextBased: () => true,
+    async send() {
+      sendCalls += 1;
+      startSend();
+      await sendGate;
+      return createdMessage;
+    },
+    messages: { async fetch(id) { assert.equal(id, createdMessage.id); return createdMessage; } }
+  };
+  const db = {
+    queueList: () => [],
+    getQueueStatusMessage: () => stored,
+    saveQueueStatusMessage(guildId, channelId, messageId) {
+      stored = { guild_id: guildId, channel_id: channelId, message_id: messageId };
+    }
+  };
+  const guild = { id: 'concurrent-guild', channels: { fetch: async () => channel, cache: new Map() } };
+
+  const first = refreshQueueDisplay({ guild, db, config });
+  await sendStarted;
+  const second = refreshQueueDisplay({ guild, db, config });
+  releaseSend();
+  await Promise.all([first, second]);
+
+  assert.equal(sendCalls, 1, 'only one message should be created');
+  assert.equal(editCalls, 1, 'the queued refresh should edit the newly created message');
+  assert.equal(stored.message_id, createdMessage.id);
+});
+
+test('refresh recreates the queue embed if the saved message disappears during edit', async () => {
+  let saved = { channel_id: config.ticketing.queue.display.channelId, message_id: 'old-message' };
+  let newMessages = 0;
+  const missing = Object.assign(new Error('Unknown Message'), { code: 10008 });
+  const channel = {
+    id: config.ticketing.queue.display.channelId,
+    isTextBased: () => true,
+    async send() { newMessages += 1; return { id: '10101010101010101' }; },
+    messages: {
+      async fetch() {
+        return {
+          async edit() { throw missing; }
+        };
+      }
+    }
+  };
+  const db = {
+    queueList: () => [],
+    getQueueStatusMessage: () => saved,
+    saveQueueStatusMessage(guildId, channelId, messageId) {
+      saved = { guild_id: guildId, channel_id: channelId, message_id: messageId };
+    }
+  };
+  const guild = { id: 'edit-race-guild', channels: { fetch: async () => channel, cache: new Map() } };
+
+  assert.equal(await refreshQueueDisplay({ guild, db, config }), true);
+  assert.equal(newMessages, 1);
+  assert.equal(saved.message_id, '10101010101010101');
+});
