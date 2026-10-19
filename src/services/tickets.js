@@ -279,7 +279,11 @@ export async function closeTicket({ ticket, channel, member, reason = 'No reason
       const components = [];
       if (config.features?.reviews) {
         components.push(new ActionRowBuilder().addComponents(...[1,2,3,4,5].map((rating) =>
-          new ButtonBuilder().setCustomId(`review:rate:${ticket.id}:${rating}`).setLabel(String(rating)).setStyle(rating >= 4 ? ButtonStyle.Success : rating <= 2 ? ButtonStyle.Danger : ButtonStyle.Secondary))));
+          new ButtonBuilder()
+            .setCustomId(`review:rate:${ticket.id}:${rating}:${ticket.owner_id}`)
+            .setLabel(`${rating} star${rating === 1 ? '' : 's'}`)
+            .setEmoji('⭐')
+            .setStyle(rating >= 4 ? ButtonStyle.Success : rating <= 2 ? ButtonStyle.Danger : ButtonStyle.Secondary))));
       }
       await owner.send({
         content: `Your support ticket #${ticket.id} in **${guild.name}** has been closed. ${config.features?.reviews ? 'You can leave an optional rating below.' : ''}`,
