@@ -39,7 +39,7 @@ export function buildQueueEmbed({ guild, queued, config, display }) {
  * Creates or edits this guild's persistent queue embed. Its message ID is kept
  * in SQLite so a bot restart edits the existing message instead of duplicating it.
  */
-export async function refreshQueueDisplay({ guild, db, config }) {
+async function refreshQueueDisplayOnce({ guild, db, config }) {
   const display = config.ticketing.queue?.display;
   if (!display?.enabled || !display.channelId) return false;
   if ((display.type || 'embed') !== 'embed') throw new Error('ticketing.queue.display.type currently supports only "embed".');
@@ -70,11 +70,45 @@ export async function refreshQueueDisplay({ guild, db, config }) {
   }
 
   if (message) {
-    await message.edit(payload);
-    return true;
+    try {
+      await message.edit(payload);
+      return true;
+    } catch (error) {
+      if (!isUnknownMessage(error)) throw error;
+    }
   }
 
   const created = await channel.send(payload);
   db.saveQueueStatusMessage(guild.id, channel.id, created.id);
   return true;
+}
+
+
+const inFlightRefreshes = new Map();
+
+/**
+ * Serialize queue panel updates per guild. If another event arrives while a
+ * refresh is running, run one more pass afterwards to publish the latest DB state.
+ */
+export function refreshQueueDisplay(args) {
+  const guildId = String(args.guild.id);
+  const inFlight = inFlightRefreshes.get(guildId);
+  if (inFlight) {
+    inFlight.dirty = true;
+    return inFlight.promise;
+  }
+
+  const state = { dirty: false, promise: null };
+  state.promise = (async () => {
+    let result = false;
+    do {
+      state.dirty = false;
+      result = await refreshQueueDisplayOnce(args);
+    } while (state.dirty);
+    return result;
+  })().finally(() => {
+    if (inFlightRefreshes.get(guildId) === state) inFlightRefreshes.delete(guildId);
+  });
+  inFlightRefreshes.set(guildId, state);
+  return state.promise;
 }
