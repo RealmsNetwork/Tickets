@@ -57,3 +57,19 @@ test('channel ordering sorts tickets into their existing positions within each p
     ]
   );
 });
+
+test('active ticket channels sort above closed channels regardless of closed priority', () => {
+  const entries = [
+    { ticket: { id: 1, status: 'open', priority: 'low', created_at: 1 }, channel: { id: 'active-low', parentId: 'support', position: 2 } },
+    { ticket: { id: 2, status: 'closed', priority: 'urgent', created_at: 2 }, channel: { id: 'closed-urgent', parentId: 'support', position: 1 } },
+    { ticket: { id: 3, status: 'open', priority: 'high', created_at: 3 }, channel: { id: 'active-high', parentId: 'support', position: 3 } }
+  ];
+
+  assert.deepEqual(
+    buildPriorityPositionUpdates(entries, priorityLevels),
+    [
+      { channel: 'active-high', position: 1 },
+      { channel: 'closed-urgent', position: 3 }
+    ]
+  );
+});
