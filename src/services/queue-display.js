@@ -5,23 +5,32 @@ function isUnknownMessage(error) {
   return Number(error?.code ?? error?.rawError?.code) === 10008;
 }
 
-function buildQueueEmbed({ guild, queued, config, display }) {
+export function buildQueueEmbed({ guild, queued, config, display }) {
   const maxTickets = Math.min(25, Math.max(1, Number(display.maxTickets ?? 15)));
-  const shown = queued.slice(0, maxTickets);
-  const lines = shown.map((ticket, index) => {
+  const lines = [];
+  let shownCount = 0;
+
+  for (const ticket of queued.slice(0, maxTickets)) {
     const category = config.ticketing.categories.find((item) => item.id === ticket.category_id);
     const channel = guild.channels.cache.get(ticket.channel_id);
     const channelLabel = channel ? `<#${channel.id}>` : `Ticket #${ticket.id}`;
     const categoryLabel = category?.name ?? ticket.category_id;
-    return `**${index + 1}.** ${formatPriority(ticket.priority, config.priorityLevels)} · ${channelLabel} · ${categoryLabel} · <@${ticket.owner_id}>`;
-  });
-  if (queued.length === 0) lines.push('There are currently no tickets waiting for support.');
-  if (queued.length > shown.length) lines.push(`\n…and ${queued.length - shown.length} more waiting ticket(s).`);
+    const line = `**${shownCount + 1}.** ${formatPriority(ticket.priority, config.priorityLevels)} · ${channelLabel} · ${categoryLabel} · <@${ticket.owner_id}>`;
+    if ([...lines, line].join('\\n').length > 3900) break;
+    lines.push(line);
+    shownCount += 1;
+  }
+
+  if (queued.length === 0) {
+    lines.push('There are currently no tickets waiting for support.');
+  } else if (shownCount < queued.length) {
+    lines.push(`\\n…and ${queued.length - shownCount} more waiting ticket(s).`);
+  }
 
   return new EmbedBuilder()
     .setColor(config.app.defaultColor || '#6D5AE6')
     .setTitle(String(display.title || 'Support Queue').slice(0, 256))
-    .setDescription(lines.join('\n').slice(0, 4096))
+    .setDescription(lines.join('\\n').slice(0, 4096))
     .setFooter({ text: `${queued.length} waiting · Updates every ${Math.max(15, Number(display.refreshIntervalSeconds ?? 60))} seconds` })
     .setTimestamp();
 }
