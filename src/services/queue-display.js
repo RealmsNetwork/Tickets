@@ -11,18 +11,18 @@ function buildQueueEmbed({ guild, queued, config, display }) {
   const lines = shown.map((ticket, index) => {
     const category = config.ticketing.categories.find((item) => item.id === ticket.category_id);
     const channel = guild.channels.cache.get(ticket.channel_id);
-    const channelLabel = channel ? \`<#\${channel.id}>\` : \`Ticket #\${ticket.id}\`;
+    const channelLabel = channel ? `<#${channel.id}>` : `Ticket #${ticket.id}`;
     const categoryLabel = category?.name ?? ticket.category_id;
-    return \`**\${index + 1}.** \${formatPriority(ticket.priority, config.priorityLevels)} · \${channelLabel} · \${categoryLabel} · <@\${ticket.owner_id}>\`;
+    return `**${index + 1}.** ${formatPriority(ticket.priority, config.priorityLevels)} · ${channelLabel} · ${categoryLabel} · <@${ticket.owner_id}>`;
   });
   if (queued.length === 0) lines.push('There are currently no tickets waiting for support.');
-  if (queued.length > shown.length) lines.push(\`\\n…and \${queued.length - shown.length} more waiting ticket(s).\`);
+  if (queued.length > shown.length) lines.push(`\n…and ${queued.length - shown.length} more waiting ticket(s).`);
 
   return new EmbedBuilder()
     .setColor(config.app.defaultColor || '#6D5AE6')
     .setTitle(String(display.title || 'Support Queue').slice(0, 256))
-    .setDescription(lines.join('\\n').slice(0, 4096))
-    .setFooter({ text: \`\${queued.length} waiting · Updates every \${Math.max(15, Number(display.refreshIntervalSeconds ?? 60))} seconds\` })
+    .setDescription(lines.join('\n').slice(0, 4096))
+    .setFooter({ text: `${queued.length} waiting · Updates every ${Math.max(15, Number(display.refreshIntervalSeconds ?? 60))} seconds` })
     .setTimestamp();
 }
 
@@ -36,11 +36,11 @@ export async function refreshQueueDisplay({ guild, db, config }) {
   if ((display.type || 'embed') !== 'embed') throw new Error('ticketing.queue.display.type currently supports only "embed".');
 
   const channel = await guild.channels.fetch(display.channelId).catch((error) => {
-    console.warn(\`[queue-display] Unable to fetch configured channel \${display.channelId} in guild \${guild.id}: \${error.message}\`);
+    console.warn(`[queue-display] Unable to fetch configured channel ${display.channelId} in guild ${guild.id}: ${error.message}`);
     return null;
   });
   if (!channel?.isTextBased?.() || typeof channel.send !== 'function') {
-    console.warn(\`[queue-display] Configured channel \${display.channelId} is not a sendable text channel in guild \${guild.id}.\`);
+    console.warn(`[queue-display] Configured channel ${display.channelId} is not a sendable text channel in guild ${guild.id}.`);
     return false;
   }
 
