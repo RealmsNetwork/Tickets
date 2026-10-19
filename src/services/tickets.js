@@ -292,13 +292,13 @@ export async function reopenTicket({ ticket, channel, member, db, config }) {
   const nextStatus = config.ticketing.queue?.enabled ? 'queued' : 'open';
   db.updateTicket(ticket.id, { status: nextStatus, claimed_by: null, closed_at: null, closed_by: null, close_reason: null, last_activity_at: Date.now() });
   const ownerName = (await channel.guild.client.users.fetch(ticket.owner_id).catch(() => null))?.username || 'member';
-  const channelPrefix = config.ticketing.channelPrefix ?? 'ticket-';
-  await channel.setName(safeChannelName(`${channelPrefix}${ticket.id}-${ownerName}`).slice(0, 100)).catch(() => {});
+  await channel.setName(ticketChannelName(config, category, ticket.id, ownerName)).catch(() => {});
   await channel.permissionOverwrites.edit(ticket.owner_id, { ViewChannel: true, SendMessages: true, ReadMessageHistory: true }).catch(() => {});
   for (const userId of db.listParticipants(ticket.id)) {
     if (userId !== ticket.owner_id) await channel.permissionOverwrites.edit(userId, { ViewChannel: true, SendMessages: true, ReadMessageHistory: true }).catch(() => {});
   }
   await channel.send(`🔓 Ticket #${ticket.id} was reopened by <@${memberId(member)}>. Status: **${nextStatus}**.`);
+  await syncTicketPresentation({ guild: channel.guild, db, config });
   return db.getTicketById(ticket.id);
 }
 
