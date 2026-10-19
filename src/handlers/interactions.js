@@ -376,13 +376,22 @@ async function handleComponent(interaction) {
   }
 
   if (interaction.isButton() && id.startsWith('review:rate:')) {
-    const [, , ticketIdRaw, ratingRaw] = id.split(':');
+    const [, , ticketIdRaw, ratingRaw, requestedOwnerId] = id.split(':');
     const ticketId = Number(ticketIdRaw);
     const rating = Number(ratingRaw);
-    const ticket = db.getTicketById(ticketId);
-    if (!ticket || ticket.owner_id !== user.id) throw new Error('Only the ticket owner can review this ticket.');
     if (!config.features?.reviews) throw new Error('Reviews are disabled.');
-    const modal = new ModalBuilder().setCustomId(`review:submit:${ticketId}:${rating}`).setTitle(`Rate ticket #${ticketId}`)
+    if (!Number.isInteger(ticketId) || ticketId < 1 || !Number.isInteger(rating) || rating < 1 || rating > 5) {
+      throw new Error('This review button is invalid. Please use the latest review message from the bot.');
+    }
+    if (requestedOwnerId && requestedOwnerId !== user.id) {
+      throw new Error('These review buttons were sent to a different account. Open the review DM sent to the ticket owner.');
+    }
+    const ticket = db.getTicketById(ticketId);
+    if (!ticket) throw new Error('This ticket record is no longer available, so this review link has expired.');
+    if (ticket.owner_id !== user.id) {
+      throw new Error('This review link is out of date and no longer matches your ticket. Please ask support for a fresh review link.');
+    }
+    const modal = new ModalBuilder().setCustomId(`review:submit:${ticketId}:${rating}:${user.id}`).setTitle(`Rate ticket #${ticketId}`)
       .addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('comment').setLabel('Optional feedback').setStyle(TextInputStyle.Paragraph).setRequired(false).setMaxLength(900)));
     return interaction.showModal(modal);
   }
@@ -442,15 +451,17 @@ async function handleModal(interaction) {
   }
 
   if (id.startsWith('review:submit:')) {
-    const [, , ticketIdRaw, ratingRaw] = id.split(':');
+    const [, , ticketIdRaw, ratingRaw, requestedOwnerId] = id.split(':');
     const ticketId = Number(ticketIdRaw);
     const rating = Number(ratingRaw);
+    if (requestedOwnerId && requestedOwnerId !== user.id) throw new Error('This review form was issued to a different account.');
     const ticket = db.getTicketById(ticketId);
-    if (!ticket || ticket.owner_id !== user.id) throw new Error('Only the ticket owner can review this ticket.');
+    if (!ticket) throw new Error('This ticket record is no longer available, so the review could not be saved.');
+    if (ticket.owner_id !== user.id) throw new Error('Only the ticket owner can submit this review.');
     if (!Number.isInteger(rating) || rating < 1 || rating > 5) throw new Error('Invalid rating.');
     const comment = interaction.fields.getTextInputValue('comment') || '';
     db.saveReview({ ticketId, guildId: ticket.guild_id, userId: user.id, rating, comment: truncate(comment, 900) });
-    return interaction.reply({ content: `Thanks for rating ticket #${ticketId}: ${rating}/5.`, ...ephemeral });
+    return interaction.reply({ content: `Thanks for rating ticket #${ticketId}: ${'⭐'.repeat(rating)} (${rating}/5). Your feedback has been saved.`, ...ephemeral });
   }
 }
 
