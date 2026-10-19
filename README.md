@@ -94,7 +94,7 @@ Once online, run `/ticket-panel` in the channel where users should open tickets.
 | `features.suggestions` | Enable the suggestion workflow |
 | `features.reviews` | Let users rate their support experience |
 
-Category IDs must be letters, digits, underscores, or hyphens (max 40 chars). Each category can have a `parentCategoryId`, `supportRoleIds`, `requiredRoleIds`, and up to three `questions`. Each category can also set `channelPrefix` to override the global prefix; for example, `channelPrefix`: `general-` gives that category channels such as `general-12-someone`. Configure the optional queue embed under `ticketing.queue.display`; set `enabled`, `type: "embed"`, and a text `channelId`. The bot creates the message on first use and edits the stored message on restarts and at `refreshIntervalSeconds`.
+Category IDs must be letters, digits, underscores, or hyphens (max 40 chars). Each category can have a `parentCategoryId`, `supportRoleIds`, `requiredRoleIds`, and up to three `questions`. Each category can also set `channelPrefix` to override the global prefix; for example, set `channelPrefix` to `general-` to create channels such as `general-12-someone`. To enable the optional queue embed, set `ticketing.queue.enabled` and `ticketing.queue.display.enabled` to `true`, choose `type: "embed"`, and set a text `channelId`. The bot creates the message on first use, stores its message ID in SQLite, then edits that same message after restarts and at `refreshIntervalSeconds`. Higher `priorityLevels[].rank` values appear first; tickets with equal priority stay FIFO, and closed ticket channels are placed below active tickets.
 
 ## Commands
 
