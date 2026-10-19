@@ -9,6 +9,7 @@ import { renderTranscript } from '../services/transcripts.js';
 import { canManageTicket, isAdmin, isStaff, requireStaff, categoryForTicket } from '../services/permissions.js';
 import { formatDuration, parseMoneyToMinorUnits, truncate } from '../utils/text.js';
 import { calculate } from '../utils/calculator.js';
+import { formatPriority } from '../utils/priority.js';
 
 const ephemeral = { ephemeral: true };
 const errorText = (error) => error instanceof Error ? error.message : 'An unexpected error occurred.';
@@ -138,7 +139,7 @@ async function handleSlashCommand(interaction) {
     if (name === 'ticket-priority') {
       const priority = interaction.options.getString('level', true);
       await setPriority({ ticket, channel, member, priority, db, config });
-      return sendReply(interaction, `Ticket #${ticket.id} priority is now **${priority}**.`);
+      return sendReply(interaction, `Ticket #${ticket.id} priority is now **${formatPriority(priority, config.priorityLevels)}**. Ticket channels and queue order have been refreshed.`);
     }
     if (name === 'ticket-category') {
       const categoryId = interaction.options.getString('category', true);
