@@ -376,22 +376,46 @@ async function handleComponent(interaction) {
   }
 
   if (interaction.isButton() && id.startsWith('review:rate:')) {
-    const [, , ticketIdRaw, ratingRaw, requestedOwnerId] = id.split(':');
+    const [, , ticketIdRaw, ratingRaw, requestedOwnerIdRaw, requestedGuildIdRaw] = id.split(':');
     const ticketId = Number(ticketIdRaw);
     const rating = Number(ratingRaw);
     if (!config.features?.reviews) throw new Error('Reviews are disabled.');
     if (!Number.isInteger(ticketId) || ticketId < 1 || !Number.isInteger(rating) || rating < 1 || rating > 5) {
       throw new Error('This review button is invalid. Please use the latest review message from the bot.');
     }
-    if (requestedOwnerId && requestedOwnerId !== user.id) {
+
+    const ticket = db.getTicketById(ticketId);
+    let reviewOwnerId = requestedOwnerIdRaw;
+    let reviewGuildId = requestedGuildIdRaw;
+
+    // New review buttons bind the request to the owner and guild, so ratings still work
+    // if staff deletes the ticket channel/record after closing it.
+    if (reviewOwnerId && reviewOwnerId !== user.id) {
       throw new Error('These review buttons were sent to a different account. Open the review DM sent to the ticket owner.');
     }
-    const ticket = db.getTicketById(ticketId);
-    if (!ticket) throw new Error('This ticket record is no longer available, so this review link has expired.');
-    if (ticket.owner_id !== user.id) {
-      throw new Error('This review link is out of date and no longer matches your ticket. Please ask support for a fresh review link.');
+    if (ticket) {
+      if (ticket.owner_id !== user.id) {
+        throw new Error('This review link is out of date and no longer matches your ticket. Please use the review DM sent for your ticket.');
+      }
+      if (reviewGuildId && reviewGuildId !== ticket.guild_id) {
+        throw new Error('This review link no longer matches the ticket. Please ask support for a fresh review link.');
+      }
+      reviewOwnerId = ticket.owner_id;
+      reviewGuildId = ticket.guild_id;
+    } else if (!reviewOwnerId || !reviewGuildId) {
+      // Legacy DMs did not encode owner/guild. They can still be used when the bot is
+      // installed in exactly one server; otherwise the correct server is ambiguous.
+      if (client.guilds.cache.size !== 1) {
+        throw new Error('This older review link has expired because its ticket was removed. Please ask support for a fresh review link.');
+      }
+      reviewOwnerId = user.id;
+      reviewGuildId = client.guilds.cache.first().id;
     }
-    const modal = new ModalBuilder().setCustomId(`review:submit:${ticketId}:${rating}:${user.id}`).setTitle(`Rate ticket #${ticketId}`)
+    if (!reviewOwnerId || !reviewGuildId) throw new Error('This review link is incomplete. Please ask support for a fresh review link.');
+
+    const modal = new ModalBuilder()
+      .setCustomId(`review:submit:${ticketId}:${rating}:${reviewOwnerId}:${reviewGuildId}`)
+      .setTitle(`Rate ticket #${ticketId}`)
       .addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('comment').setLabel('Optional feedback').setStyle(TextInputStyle.Paragraph).setRequired(false).setMaxLength(900)));
     return interaction.showModal(modal);
   }
@@ -451,16 +475,28 @@ async function handleModal(interaction) {
   }
 
   if (id.startsWith('review:submit:')) {
-    const [, , ticketIdRaw, ratingRaw, requestedOwnerId] = id.split(':');
+    const [, , ticketIdRaw, ratingRaw, requestedOwnerIdRaw, requestedGuildIdRaw] = id.split(':');
     const ticketId = Number(ticketIdRaw);
     const rating = Number(ratingRaw);
-    if (requestedOwnerId && requestedOwnerId !== user.id) throw new Error('This review form was issued to a different account.');
+    if (!Number.isInteger(ticketId) || ticketId < 1 || !Number.isInteger(rating) || rating < 1 || rating > 5) {
+      throw new Error('This review form is invalid. Please reopen the review message and try again.');
+    }
+    if (requestedOwnerIdRaw && requestedOwnerIdRaw !== user.id) throw new Error('This review form was issued to a different account.');
+
     const ticket = db.getTicketById(ticketId);
-    if (!ticket) throw new Error('This ticket record is no longer available, so the review could not be saved.');
-    if (ticket.owner_id !== user.id) throw new Error('Only the ticket owner can submit this review.');
-    if (!Number.isInteger(rating) || rating < 1 || rating > 5) throw new Error('Invalid rating.');
+    let reviewGuildId = requestedGuildIdRaw;
+    if (ticket) {
+      if (ticket.owner_id !== user.id) throw new Error('Only the ticket owner can submit this review.');
+      if (reviewGuildId && reviewGuildId !== ticket.guild_id) throw new Error('This review form no longer matches the ticket.');
+      reviewGuildId = ticket.guild_id;
+    } else if (!reviewGuildId && client.guilds.cache.size === 1) {
+      // Backward compatibility for an already-open legacy modal after its ticket was deleted.
+      reviewGuildId = client.guilds.cache.first().id;
+    }
+    if (!reviewGuildId) throw new Error('The ticket was removed and this older review form no longer identifies its server. Please ask support for a fresh review link.');
+
     const comment = interaction.fields.getTextInputValue('comment') || '';
-    db.saveReview({ ticketId, guildId: ticket.guild_id, userId: user.id, rating, comment: truncate(comment, 900) });
+    db.saveReview({ ticketId, guildId: reviewGuildId, userId: user.id, rating, comment: truncate(comment, 900) });
     return interaction.reply({ content: `Thanks for rating ticket #${ticketId}: ${'⭐'.repeat(rating)} (${rating}/5). Your feedback has been saved.`, ...ephemeral });
   }
 }
