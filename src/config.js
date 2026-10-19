@@ -60,6 +60,21 @@ if (categories.length > 25) throw new Error('Discord select menus support at mos
 if (!Array.isArray(settings.priorityLevels) || settings.priorityLevels.length < 1 || settings.priorityLevels.length > 25) {
   throw new Error('settings.priorityLevels must contain between 1 and 25 priority levels.');
 }
+
+const priorityIds = new Set();
+for (const level of settings.priorityLevels) {
+  if (!level?.id || typeof level.id !== 'string' || !/^[a-z0-9_-]{1,40}$/i.test(level.id)) {
+    throw new Error('Every priority level needs a unique id (letters, digits, _ and - only; max 40 characters).');
+  }
+  if (priorityIds.has(level.id)) throw new Error(`Duplicate priority level id: ${level.id}`);
+  priorityIds.add(level.id);
+  if (level.rank !== undefined && (typeof level.rank !== 'number' || !Number.isFinite(level.rank))) {
+    throw new Error(`Priority level ${level.id} rank must be a finite number when provided.`);
+  }
+  if (level.label !== undefined && (typeof level.label !== 'string' || !level.label.trim())) {
+    throw new Error(`Priority level ${level.id} label must be a non-empty string.`);
+  }
+}
 const categoryIds = new Set();
 for (const category of categories) {
   if (!category?.id || !/^[a-z0-9_-]{1,40}$/i.test(category.id)) {
