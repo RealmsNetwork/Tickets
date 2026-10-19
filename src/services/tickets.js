@@ -401,7 +401,7 @@ export async function markActivity({ ticket, author, db, config }) {
 }
 
 export async function takeNextQueuedTicket({ guild, member, db, config }) {
-  const queue = db.queueList(guild.id).filter((item) => isStaff(member, config, categoryForTicket(item, config)));
+  const queue = db.queueList(guild.id, config.priorityLevels).filter((item) => isStaff(member, config, categoryForTicket(item, config)));
   if (!queue.length) {
     if (!isStaff(member, config)) throw new Error('Only support staff can take queued tickets.');
     throw new Error('There are no queued tickets assigned to a support category you can access.');
@@ -417,7 +417,7 @@ export async function takeNextQueuedTicket({ guild, member, db, config }) {
 }
 
 export function listQueue(db, guildId, config) {
-  return db.queueList(guildId).map((ticket, index) => ({ ...ticket, position: index + 1, category: getCategory(config, ticket.category_id)?.name ?? ticket.category_id }));
+  return db.queueList(guildId, config.priorityLevels).map((ticket, index) => ({ ...ticket, position: index + 1, category: getCategory(config, ticket.category_id)?.name ?? ticket.category_id }));
 }
 
 export async function runInactivityMonitor(client) {
