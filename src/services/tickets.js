@@ -341,7 +341,7 @@ export async function setPriority({ ticket, channel, member, priority, db, confi
     console.warn(`[tickets] Unable to post priority change for ticket #${ticket.id}: ${error.message}`);
   });
   await syncTicketPresentation({ guild: channel.guild, db, config });
-  return updated;
+  return db.getTicketById(ticket.id);
 }
 
 export async function setCategory({ ticket, channel, member, categoryId, db, config }) {
