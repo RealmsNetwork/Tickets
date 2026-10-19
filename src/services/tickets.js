@@ -340,8 +340,8 @@ export async function setPriority({ ticket, channel, member, priority, db, confi
   await channel.send(`Ticket #${ticket.id} priority changed to **${formatPriority(priority, configured)}** by <@${memberId(member)}>.`).catch((error) => {
     console.warn(`[tickets] Unable to post priority change for ticket #${ticket.id}: ${error.message}`);
   });
-  await syncTicketPresentation({ guild: channel.guild, db, config });
-  return db.getTicketById(ticket.id);
+  const presentationSynced = await syncTicketPresentation({ guild: channel.guild, db, config });
+  return { ticket: db.getTicketById(ticket.id), presentationSynced };
 }
 
 export async function setCategory({ ticket, channel, member, categoryId, db, config }) {
