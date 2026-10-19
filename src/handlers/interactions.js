@@ -138,8 +138,11 @@ async function handleSlashCommand(interaction) {
     }
     if (name === 'ticket-priority') {
       const priority = interaction.options.getString('level', true);
-      await setPriority({ ticket, channel, member, priority, db, config });
-      return sendReply(interaction, `Ticket #${ticket.id} priority is now **${formatPriority(priority, config.priorityLevels)}**. Ticket channels and queue order have been refreshed.`);
+      const result = await setPriority({ ticket, channel, member, priority, db, config });
+      const presentation = result.presentationSynced
+        ? 'Ticket channel order and the configured queue display are up to date.'
+        : 'The priority was saved, but one or more views could not refresh. Check the bot logs and its Manage Channels / message permissions.';
+      return sendReply(interaction, `Ticket #${ticket.id} priority is now **${formatPriority(priority, config.priorityLevels)}**. ${presentation}`);
     }
     if (name === 'ticket-category') {
       const categoryId = interaction.options.getString('category', true);
