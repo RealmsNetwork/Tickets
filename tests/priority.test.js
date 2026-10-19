@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { compareTicketsByPriority, formatPriority, getPriorityRank, sortTicketsByPriority } from '../src/utils/priority.js';
-import { buildPriorityPositionUpdates } from '../src/services/ticket-ordering.js';
+import { buildPriorityPositionUpdates, sortTicketChannelsByPriority } from '../src/services/ticket-ordering.js';
 
 const priorityLevels = [
   { id: 'low', label: 'Low', rank: 1, emoji: '🟢' },
@@ -72,4 +72,50 @@ test('active ticket channels sort above closed channels regardless of closed pri
       { channel: 'closed-urgent', position: 3 }
     ]
   );
+});
+
+test('concurrent channel sorts finish using the latest priority snapshot', async () => {
+  let tickets = [
+    { id: 1, channel_id: 'channel-low', status: 'open', priority: 'low', created_at: 1 },
+    { id: 2, channel_id: 'channel-high', status: 'open', priority: 'urgent', created_at: 2 }
+  ];
+  const channels = new Map([
+    ['channel-low', { id: 'channel-low', parentId: 'support', position: 0 }],
+    ['channel-high', { id: 'channel-high', parentId: 'support', position: 1 }]
+  ]);
+  let releaseFirst;
+  let firstStarted;
+  const firstStartedPromise = new Promise((resolve) => { firstStarted = resolve; });
+  const firstGate = new Promise((resolve) => { releaseFirst = resolve; });
+  let calls = 0;
+  const guild = {
+    id: 'priority-race-guild',
+    channels: {
+      cache: channels,
+      async setPositions(updates) {
+        calls += 1;
+        if (calls === 1) {
+          firstStarted();
+          await firstGate;
+        }
+        for (const update of updates) channels.get(update.channel).position = update.position;
+      }
+    }
+  };
+  const db = { ticketsForGuild: () => tickets };
+  const args = { guild, db, config: { priorityLevels } };
+
+  const first = sortTicketChannelsByPriority(args);
+  await firstStartedPromise;
+  tickets = [
+    { ...tickets[0], priority: 'urgent' },
+    { ...tickets[1], priority: 'low' }
+  ];
+  const second = sortTicketChannelsByPriority(args);
+  releaseFirst();
+  await Promise.all([first, second]);
+
+  assert.ok(calls >= 2, 'a change received during an in-flight reorder should trigger a fresh pass');
+  assert.equal(channels.get('channel-low').position, 0);
+  assert.equal(channels.get('channel-high').position, 1);
 });
