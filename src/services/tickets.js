@@ -387,19 +387,25 @@ export async function renameTicket({ ticket, channel, member, name, db, config }
   await channel.send(`Ticket renamed to **#${newName}** by <@${memberId(member)}>.`);
 }
 
-export async function markActivity({ ticket, author, db, config }) {
+export async function markActivity({ ticket, author, db, config, guild = null }) {
   if (!ticket || !activeStatuses.has(ticket.status)) return;
   const stamp = Date.now();
   const patch = { last_activity_at: stamp, inactivity_alerted_at: null };
+  let autoClaimed = false;
   if (!ticket.first_response_at && author.id !== ticket.owner_id && isStaff(author, config, categoryForTicket(ticket, config))) {
     patch.first_response_at = stamp;
     db.logStaffEvent({ guildId: ticket.guild_id, ticketId: ticket.id, staffId: author.id, action: 'response' });
     if (config.ticketing.claims?.autoClaimOnFirstResponse && !ticket.claimed_by) {
       patch.claimed_by = author.id;
+      patch.status = 'open';
+      autoClaimed = true;
       db.logStaffEvent({ guildId: ticket.guild_id, ticketId: ticket.id, staffId: author.id, action: 'claim' });
     }
   }
   db.updateTicket(ticket.id, patch);
+  if (autoClaimed && guild) {
+    await syncTicketPresentation({ guild, db, config });
+  }
 }
 
 export async function takeNextQueuedTicket({ guild, member, db, config }) {
