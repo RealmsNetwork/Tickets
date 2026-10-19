@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import Sqlite from 'better-sqlite3';
+import { sortTicketsByPriority } from '../utils/priority.js';
 
 const now = () => Date.now();
 const asJson = (value, fallback = []) => {
@@ -107,6 +108,13 @@ export class Database {
         created_at INTEGER NOT NULL
       );
 
+      CREATE TABLE IF NOT EXISTS queue_status_messages (
+        guild_id TEXT PRIMARY KEY,
+        channel_id TEXT NOT NULL,
+        message_id TEXT NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+
       CREATE TABLE IF NOT EXISTS invoices (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         guild_id TEXT NOT NULL,
@@ -145,6 +153,11 @@ export class Database {
     return ticket;
   }
 
+  ticketsForGuild(guildId) {
+    return this.sqlite.prepare('SELECT * FROM tickets WHERE guild_id=? ORDER BY created_at ASC, id ASC')
+      .all(guildId).map((row) => this.hydrateTicket(row));
+  }
+
   getTicketById(id) {
     const row = this.sqlite.prepare('SELECT * FROM tickets WHERE id = ?').get(Number(id));
     return this.hydrateTicket(row);
@@ -174,7 +187,7 @@ export class Database {
     return this.getTicketById(id);
   }
 
-  claimTicketAtomically({ ticketId, staffId, guildId, capacity = 0, strictOrder = false, allowQueueJump = false }) {
+  claimTicketAtomically({ ticketId, staffId, guildId, capacity = 0, strictOrder = false, allowQueueJump = false, priorityLevels = [] }) {
     const transaction = this.sqlite.transaction(() => {
       const ticket = this.sqlite.prepare('SELECT * FROM tickets WHERE id=? AND guild_id=?').get(Number(ticketId), guildId);
       if (!ticket) return { ok: false, reason: 'missing' };
@@ -188,8 +201,9 @@ export class Database {
       }
 
       if (strictOrder && !allowQueueJump) {
-        const first = this.sqlite.prepare(`SELECT id FROM tickets WHERE guild_id=? AND status='queued' AND claimed_by IS NULL
-          ORDER BY CASE priority WHEN 'urgent' THEN 4 WHEN 'high' THEN 3 WHEN 'normal' THEN 2 ELSE 1 END DESC, created_at ASC LIMIT 1`).get(guildId);
+        const waiting = this.sqlite.prepare("SELECT * FROM tickets WHERE guild_id=? AND status='queued' AND claimed_by IS NULL")
+          .all(guildId).map((row) => this.hydrateTicket(row));
+        const first = sortTicketsByPriority(waiting, priorityLevels)[0];
         if (first && Number(first.id) !== Number(ticketId)) return { ok: false, reason: 'order', nextTicketId: Number(first.id) };
       }
 
@@ -268,10 +282,25 @@ export class Database {
       .all(staleBefore, ...guildIds).map((row) => this.hydrateTicket(row));
   }
 
-  queueList(guildId) {
-    return this.sqlite.prepare(`SELECT * FROM tickets WHERE guild_id=? AND status='queued' AND claimed_by IS NULL
-      ORDER BY CASE priority WHEN 'urgent' THEN 4 WHEN 'high' THEN 3 WHEN 'normal' THEN 2 ELSE 1 END DESC, created_at ASC`)
+  queueList(guildId, priorityLevels = []) {
+    const rows = this.sqlite.prepare("SELECT * FROM tickets WHERE guild_id=? AND status='queued' AND claimed_by IS NULL")
       .all(guildId).map((row) => this.hydrateTicket(row));
+    return sortTicketsByPriority(rows, priorityLevels);
+  }
+
+  getQueueStatusMessage(guildId) {
+    return this.sqlite.prepare('SELECT guild_id, channel_id, message_id, updated_at FROM queue_status_messages WHERE guild_id=?')
+      .get(guildId) ?? null;
+  }
+
+  saveQueueStatusMessage(guildId, channelId, messageId) {
+    const stamp = now();
+    this.sqlite.prepare(`INSERT INTO queue_status_messages(guild_id, channel_id, message_id, updated_at)
+      VALUES(?,?,?,?)
+      ON CONFLICT(guild_id) DO UPDATE SET
+        channel_id=excluded.channel_id, message_id=excluded.message_id, updated_at=excluded.updated_at`)
+      .run(guildId, channelId, messageId, stamp);
+    return this.getQueueStatusMessage(guildId);
   }
 
   reserveCreationCooldown(guildId, userId, cooldownMs) {
