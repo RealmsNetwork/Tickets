@@ -11,13 +11,20 @@ export async function syncTicketPresentation({ guild, db, config, sortChannels =
   jobs.push(['queue display', () => refreshQueueDisplay({ guild, db, config })]);
 
   const results = await Promise.allSettled(jobs.map(([, run]) => run()));
+  let successful = true;
   for (let index = 0; index < results.length; index += 1) {
     const result = results[index];
     if (result.status === 'rejected') {
+      successful = false;
       console.warn(`[ticket-presentation] Unable to update ${jobs[index][0]} for guild ${guild.id}: ${result.reason?.message ?? result.reason}`);
+      continue;
+    }
+    if (jobs[index][0] === 'queue display' && config.ticketing.queue?.display?.enabled && result.value === false) {
+      successful = false;
+      console.warn(`[ticket-presentation] Queue display is enabled but could not be refreshed for guild ${guild.id}.`);
     }
   }
-  return results.every((result) => result.status === 'fulfilled');
+  return successful;
 }
 
 export async function syncQueueDisplaysForClient(client, db, config) {
