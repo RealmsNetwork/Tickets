@@ -230,6 +230,7 @@ export async function closeTicket({ ticket, channel, member, reason = 'No reason
   const current = db.getTicketById(ticket.id);
   db.updateTicket(ticket.id, { status: 'closed', closed_at: Date.now(), closed_by: memberId(member), close_reason: truncate(reason, 900), last_activity_at: Date.now() });
   db.logStaffEvent({ guildId: ticket.guild_id, ticketId: ticket.id, staffId: memberId(member), action: 'close' });
+  await syncTicketPresentation({ guild, db, config });
 
   const hasLogDestination = Boolean(category?.logsChannelId || config.channels?.ticketLogsId);
   if (config.ticketing.transcripts?.saveLocalCopy || !hasLogDestination) {
@@ -287,7 +288,6 @@ export async function closeTicket({ ticket, channel, member, reason = 'No reason
       }).catch(() => {});
     }
   }
-  await syncTicketPresentation({ guild, db, config });
   return { ticket: db.getTicketById(ticket.id), transcript, summary };
 }
 
@@ -335,13 +335,13 @@ export async function setPriority({ ticket, channel, member, priority, db, confi
   if (!isStaff(member, config, category)) throw new Error('Only support staff can change priority.');
   const configured = config.priorityLevels ?? [];
   if (!configured.some((item) => item.id === priority)) throw new Error('That priority is not configured.');
-  const updated = db.updateTicket(ticket.id, { priority, last_activity_at: Date.now() });
-  await updateOpeningTicketPriority(channel, ticket, priority, config, db);
+  db.updateTicket(ticket.id, { priority, last_activity_at: Date.now() });
+  const presentationSynced = await syncTicketPresentation({ guild: channel.guild, db, config });
+  const openingEmbedUpdated = await updateOpeningTicketPriority(channel, ticket, priority, config, db);
   await channel.send(`Ticket #${ticket.id} priority changed to **${formatPriority(priority, configured)}** by <@${memberId(member)}>.`).catch((error) => {
     console.warn(`[tickets] Unable to post priority change for ticket #${ticket.id}: ${error.message}`);
   });
-  const presentationSynced = await syncTicketPresentation({ guild: channel.guild, db, config });
-  return { ticket: db.getTicketById(ticket.id), presentationSynced };
+  return { ticket: db.getTicketById(ticket.id), presentationSynced: presentationSynced && openingEmbedUpdated };
 }
 
 export async function setCategory({ ticket, channel, member, categoryId, db, config }) {
