@@ -280,7 +280,7 @@ export async function closeTicket({ ticket, channel, member, reason = 'No reason
       if (config.features?.reviews) {
         components.push(new ActionRowBuilder().addComponents(...[1,2,3,4,5].map((rating) =>
           new ButtonBuilder()
-            .setCustomId(`review:rate:${ticket.id}:${rating}:${ticket.owner_id}`)
+            .setCustomId(`review:rate:${ticket.id}:${rating}:${ticket.owner_id}:${ticket.guild_id}`)
             .setLabel(`${rating} star${rating === 1 ? '' : 's'}`)
             .setEmoji('⭐')
             .setStyle(rating >= 4 ? ButtonStyle.Success : rating <= 2 ? ButtonStyle.Danger : ButtonStyle.Secondary))));
