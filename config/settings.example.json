@@ -7,12 +7,21 @@
     "defaultColor": "#6D5AE6"
   },
   "ticketing": {
+    "channelPrefix": "ticket-",
     "maxOpenPerUser": 3,
     "creationCooldownSeconds": 20,
     "queue": {
       "enabled": false,
       "strictOrder": true,
-      "staffCapacity": 3
+      "staffCapacity": 3,
+      "display": {
+        "enabled": false,
+        "type": "embed",
+        "channelId": "",
+        "refreshIntervalSeconds": 60,
+        "maxTickets": 15,
+        "title": "Support Queue"
+      }
     },
     "claims": {
       "lockOwnerAfterClaim": false,
@@ -47,6 +56,7 @@
     "categories": [
       {
         "id": "general",
+        "channelPrefix": "",
         "name": "General Support",
         "description": "Questions and general help",
         "emoji": "🎫",
@@ -60,6 +70,7 @@
       },
       {
         "id": "technical",
+        "channelPrefix": "",
         "name": "Technical Support",
         "description": "Report a technical problem",
         "emoji": "🛠️",
@@ -74,6 +85,7 @@
       },
       {
         "id": "billing",
+        "channelPrefix": "",
         "name": "Billing and Purchases",
         "description": "Questions about purchases or payments",
         "emoji": "🧾",

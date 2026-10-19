@@ -1,0 +1,77 @@
+import { compareTicketsByPriority } from '../utils/priority.js';
+
+/**
+ * Reorders only the positions already occupied by ticket channels in each
+ * parent category. Unrelated channels keep their own positions.
+ */
+export function buildPriorityPositionUpdates(entries, priorityLevels = []) {
+  const groups = new Map();
+  for (const entry of entries) {
+    const parentId = entry.channel.parentId ?? '';
+    if (!groups.has(parentId)) groups.set(parentId, []);
+    groups.get(parentId).push(entry);
+  }
+
+  const updates = [];
+  for (const group of groups.values()) {
+    if (group.length < 2) continue;
+    const slots = group.map((entry) => Number(entry.channel.position)).sort((a, b) => a - b);
+    const orderedTickets = group.map((entry) => entry.ticket).sort((a, b) => {
+      const aActive = a.status === 'open' || a.status === 'queued';
+      const bActive = b.status === 'open' || b.status === 'queued';
+      if (aActive !== bActive) return aActive ? -1 : 1;
+      return compareTicketsByPriority(a, b, priorityLevels);
+    });
+    const entriesById = new Map(group.map((entry) => [Number(entry.ticket.id), entry]));
+
+    orderedTickets.forEach((ticket, index) => {
+      const entry = entriesById.get(Number(ticket.id));
+      const position = slots[index];
+      if (Number(entry.channel.position) !== position) {
+        updates.push({ channel: entry.channel.id, position });
+      }
+    });
+  }
+  return updates;
+}
+
+async function sortTicketChannelsByPriorityOnce({ guild, db, config }) {
+  const tickets = db.ticketsForGuild(guild.id);
+  const entries = tickets.map((ticket) => ({
+    ticket,
+    channel: guild.channels.cache.get(ticket.channel_id)
+  })).filter((entry) => entry.channel && Number.isFinite(Number(entry.channel.position)));
+
+  const updates = buildPriorityPositionUpdates(entries, config.priorityLevels);
+  if (updates.length) await guild.channels.setPositions(updates);
+  return updates.length;
+}
+
+const inFlightSorts = new Map();
+
+/**
+ * Serialize position edits per guild so concurrent ticket changes cannot leave
+ * the visible order reflecting an older priority snapshot.
+ */
+export function sortTicketChannelsByPriority(args) {
+  const guildId = String(args.guild.id);
+  const inFlight = inFlightSorts.get(guildId);
+  if (inFlight) {
+    inFlight.dirty = true;
+    return inFlight.promise;
+  }
+
+  const state = { dirty: false, promise: null };
+  state.promise = (async () => {
+    let changed = 0;
+    do {
+      state.dirty = false;
+      changed = await sortTicketChannelsByPriorityOnce(args);
+    } while (state.dirty);
+    return changed;
+  })().finally(() => {
+    if (inFlightSorts.get(guildId) === state) inFlightSorts.delete(guildId);
+  });
+  inFlightSorts.set(guildId, state);
+  return state.promise;
+}

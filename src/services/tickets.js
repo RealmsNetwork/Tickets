@@ -9,10 +9,50 @@ import { summarizeTicket } from './ai.js';
 import { safeChannelName, truncate } from '../utils/text.js';
 import { categoryForTicket, hasRequiredRoles, isAdmin, isStaff, memberId } from './permissions.js';
 import { isWithinWorkingHours } from './schedule.js';
+import { formatPriority } from '../utils/priority.js';
+import { buildTicketChannelName, getConfiguredChannelPrefix } from '../utils/ticket-channel-name.js';
+import { syncTicketPresentation } from './ticket-presentation.js';
 
 const activeStatuses = new Set(['open', 'queued']);
 export function getCategory(config, categoryId) {
   return config.ticketing.categories.find((category) => category.id === categoryId) ?? null;
+}
+
+function ticketChannelName(config, category, ticketId, username) {
+  return buildTicketChannelName(getConfiguredChannelPrefix(config, category), username, ticketId);
+}
+
+async function updateOpeningTicketPriority(channel, ticket, priority, config, db) {
+  try {
+    let opening = null;
+    if (ticket.opening_message_id) {
+      opening = await channel.messages.fetch(ticket.opening_message_id).catch(() => null);
+    }
+    if (!opening) {
+      const messages = await channel.messages.fetch({ limit: 100 });
+      opening = [...messages.values()].find((message) => message.author.id === channel.client.user.id
+        && message.embeds.some((embed) => embed.fields?.some((field) => field.name === 'Ticket' && field.value === `#${ticket.id}`)));
+    }
+    if (!opening) {
+      console.warn(`[tickets] Could not find the opening embed for ticket #${ticket.id} to refresh its priority.`);
+      return false;
+    }
+    if (!ticket.opening_message_id) db.updateTicket(ticket.id, { opening_message_id: opening.id });
+
+    const embeds = opening.embeds.map((existing) => {
+      if (!existing.fields?.some((field) => field.name === 'Ticket' && field.value === `#${ticket.id}`)) return EmbedBuilder.from(existing);
+      const embed = EmbedBuilder.from(existing);
+      embed.setFields(existing.fields.map((field) => field.name === 'Priority'
+        ? { name: field.name, value: formatPriority(priority, config.priorityLevels), inline: field.inline }
+        : { name: field.name, value: field.value, inline: field.inline }));
+      return embed;
+    });
+    await opening.edit({ embeds });
+    return true;
+  } catch (error) {
+    console.warn(`[tickets] Unable to update the opening embed for ticket #${ticket.id}: ${error.message}`);
+    return false;
+  }
 }
 
 export async function createTicket({ guild, user, member, categoryId, answers, db, config }) {
@@ -40,7 +80,7 @@ export async function createTicket({ guild, user, member, categoryId, answers, d
   if (description) normalizedAnswers['Additional details'] = truncate(description, 1000);
 
   const safeOwner = safeChannelName(user.username || 'member').slice(0, 32);
-  const channelName = `ticket-${safeOwner}`;
+  const channelName = ticketChannelName(config, category, null, safeOwner);
   const overwrites = [
     { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
     { id: user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.AttachFiles, PermissionFlagsBits.EmbedLinks] },
@@ -65,6 +105,7 @@ export async function createTicket({ guild, user, member, categoryId, answers, d
     const status = config.ticketing.queue?.enabled ? 'queued' : 'open';
     const ticket = db.createTicket({ guildId: guild.id, channelId: channel.id, ownerId: user.id, categoryId: category.id, status, intake: normalizedAnswers });
     savedTicket = ticket;
+    await channel.setName(ticketChannelName(config, category, ticket.id, safeOwner));
     await channel.setTopic(`Ticket #${ticket.id} · Owner ${user.id} · Category ${category.id}`.slice(0, 1024));
 
     const descriptionLines = Object.entries(normalizedAnswers).map(([label, value]) => `**${label}**\n${truncate(value, 700)}`);
@@ -75,7 +116,7 @@ export async function createTicket({ guild, user, member, categoryId, answers, d
       .addFields(
         { name: 'Ticket', value: `#${ticket.id}`, inline: true },
         { name: 'Status', value: status === 'queued' ? 'Waiting in queue' : 'Open', inline: true },
-        { name: 'Priority', value: 'Normal', inline: true }
+        { name: 'Priority', value: formatPriority(ticket.priority, config.priorityLevels), inline: true }
       )
       .setFooter({ text: config.app.footer || config.app.name });
     const buttons = new ActionRowBuilder().addComponents(
@@ -83,7 +124,9 @@ export async function createTicket({ guild, user, member, categoryId, answers, d
       new ButtonBuilder().setCustomId('ticket:close').setLabel('Close').setStyle(ButtonStyle.Secondary).setEmoji('🔒')
     );
     const roleMentions = (category.supportRoleIds ?? []).filter((id) => guild.roles.cache.has(id)).map((id) => `<@&${id}>`).join(' ');
-    await channel.send({ content: [roleMentions, `<@${user.id}>`].filter(Boolean).join(' '), embeds: [embed], components: [buttons], allowedMentions: { users: [user.id], roles: category.supportRoleIds ?? [] } });
+    const openingMessage = await channel.send({ content: [roleMentions, `<@${user.id}>`].filter(Boolean).join(' '), embeds: [embed], components: [buttons], allowedMentions: { users: [user.id], roles: category.supportRoleIds ?? [] } });
+    db.updateTicket(ticket.id, { opening_message_id: openingMessage.id });
+    await syncTicketPresentation({ guild, db, config });
     return { ticket, channel };
   } catch (error) {
     if (savedTicket) db.deleteTicket(savedTicket.id);
@@ -130,7 +173,8 @@ export async function claimTicket({ ticket, channel, member, db, config, allowQu
     guildId: ticket.guild_id,
     capacity: queueEnabled ? Number(config.ticketing.queue?.staffCapacity ?? 0) : 0,
     strictOrder: queueEnabled && Boolean(config.ticketing.queue?.strictOrder),
-    allowQueueJump
+    allowQueueJump,
+    priorityLevels: config.priorityLevels
   });
   if (!result.ok) {
     if (result.reason === 'missing') throw new Error('This ticket record could not be found.');
@@ -143,7 +187,10 @@ export async function claimTicket({ ticket, channel, member, db, config, allowQu
   if (config.ticketing.claims?.lockOwnerAfterClaim) {
     await channel.permissionOverwrites.edit(ticket.owner_id, { SendMessages: false }).catch(() => {});
   }
-  await channel.send({ embeds: [new EmbedBuilder().setColor(config.app.defaultColor || '#6D5AE6').setDescription(`🙋 This ticket was claimed by <@${memberId(member)}>.`)], allowedMentions: { users: [memberId(member)] } });
+  await channel.send({ embeds: [new EmbedBuilder().setColor(config.app.defaultColor || '#6D5AE6').setDescription(`🙋 This ticket was claimed by <@${memberId(member)}>.`)], allowedMentions: { users: [memberId(member)] } }).catch((error) => {
+    console.warn(`[tickets] Unable to post claim announcement for #${ticket.id}: ${error.message}`);
+  });
+  await syncTicketPresentation({ guild: channel.guild, db, config, sortChannels: false });
   return db.getTicketById(ticket.id);
 }
 
@@ -159,7 +206,10 @@ export async function unclaimTicket({ ticket, channel, member, db, config }) {
   db.updateTicket(ticket.id, { claimed_by: null, status: config.ticketing.queue?.enabled ? 'queued' : 'open', last_activity_at: Date.now() });
   db.logStaffEvent({ guildId: ticket.guild_id, ticketId: ticket.id, staffId: memberId(member), action: 'unclaim' });
   if (config.ticketing.claims?.lockOwnerAfterClaim) await channel.permissionOverwrites.edit(ticket.owner_id, { SendMessages: true }).catch(() => {});
-  await channel.send(`Ticket #${ticket.id} is back in the available queue. Previously claimed by <@${old}>.`);
+  await channel.send(`Ticket #${ticket.id} is back in the available queue. Previously claimed by <@${old}>.`).catch((error) => {
+    console.warn(`[tickets] Unable to post unclaim announcement for #${ticket.id}: ${error.message}`);
+  });
+  await syncTicketPresentation({ guild: channel.guild, db, config, sortChannels: false });
 }
 
 export async function closeTicket({ ticket, channel, member, reason = 'No reason provided.', db, config, guild }) {
@@ -180,6 +230,7 @@ export async function closeTicket({ ticket, channel, member, reason = 'No reason
   const current = db.getTicketById(ticket.id);
   db.updateTicket(ticket.id, { status: 'closed', closed_at: Date.now(), closed_by: memberId(member), close_reason: truncate(reason, 900), last_activity_at: Date.now() });
   db.logStaffEvent({ guildId: ticket.guild_id, ticketId: ticket.id, staffId: memberId(member), action: 'close' });
+  await syncTicketPresentation({ guild, db, config });
 
   const hasLogDestination = Boolean(category?.logsChannelId || config.channels?.ticketLogsId);
   if (config.ticketing.transcripts?.saveLocalCopy || !hasLogDestination) {
@@ -246,12 +297,16 @@ export async function reopenTicket({ ticket, channel, member, db, config }) {
   if (!isStaff(member, config, category) && ticket.owner_id !== memberId(member)) throw new Error('You cannot reopen this ticket.');
   const nextStatus = config.ticketing.queue?.enabled ? 'queued' : 'open';
   db.updateTicket(ticket.id, { status: nextStatus, claimed_by: null, closed_at: null, closed_by: null, close_reason: null, last_activity_at: Date.now() });
-  await channel.setName(safeChannelName(`ticket-${ticket.id}-${(await channel.guild.client.users.fetch(ticket.owner_id).catch(() => null))?.username || 'member'}`).slice(0, 100)).catch(() => {});
+  const ownerName = (await channel.guild.client.users.fetch(ticket.owner_id).catch(() => null))?.username || 'member';
+  await channel.setName(ticketChannelName(config, category, ticket.id, ownerName)).catch(() => {});
   await channel.permissionOverwrites.edit(ticket.owner_id, { ViewChannel: true, SendMessages: true, ReadMessageHistory: true }).catch(() => {});
   for (const userId of db.listParticipants(ticket.id)) {
     if (userId !== ticket.owner_id) await channel.permissionOverwrites.edit(userId, { ViewChannel: true, SendMessages: true, ReadMessageHistory: true }).catch(() => {});
   }
-  await channel.send(`🔓 Ticket #${ticket.id} was reopened by <@${memberId(member)}>. Status: **${nextStatus}**.`);
+  await channel.send(`🔓 Ticket #${ticket.id} was reopened by <@${memberId(member)}>. Status: **${nextStatus}**.`).catch((error) => {
+    console.warn(`[tickets] Unable to post reopen announcement for #${ticket.id}: ${error.message}`);
+  });
+  await syncTicketPresentation({ guild: channel.guild, db, config });
   return db.getTicketById(ticket.id);
 }
 
@@ -271,6 +326,7 @@ export async function deleteTicket({ ticket, channel, member, db, config, guild 
   }
   await channel.delete(`Ticket #${ticket.id} deleted by ${member.user?.tag || memberId(member)}`);
   db.deleteTicket(ticket.id);
+  await syncTicketPresentation({ guild, db, config });
   return ticket.id;
 }
 
@@ -280,8 +336,12 @@ export async function setPriority({ ticket, channel, member, priority, db, confi
   const configured = config.priorityLevels ?? [];
   if (!configured.some((item) => item.id === priority)) throw new Error('That priority is not configured.');
   db.updateTicket(ticket.id, { priority, last_activity_at: Date.now() });
-  await channel.send(`Priority for ticket #${ticket.id} was changed to **${priority}** by <@${memberId(member)}>.`);
-  return db.getTicketById(ticket.id);
+  const presentationSynced = await syncTicketPresentation({ guild: channel.guild, db, config });
+  const openingEmbedUpdated = await updateOpeningTicketPriority(channel, ticket, priority, config, db);
+  await channel.send(`Ticket #${ticket.id} priority changed to **${formatPriority(priority, configured)}** by <@${memberId(member)}>.`).catch((error) => {
+    console.warn(`[tickets] Unable to post priority change for ticket #${ticket.id}: ${error.message}`);
+  });
+  return { ticket: db.getTicketById(ticket.id), presentationSynced: presentationSynced && openingEmbedUpdated };
 }
 
 export async function setCategory({ ticket, channel, member, categoryId, db, config }) {
@@ -300,7 +360,14 @@ export async function setCategory({ ticket, channel, member, categoryId, db, con
     if (channel.guild.roles.cache.has(roleId)) await channel.permissionOverwrites.edit(roleId, { ViewChannel: true, SendMessages: true, ReadMessageHistory: true }).catch(() => {});
   }
   db.updateTicket(ticket.id, { category_id: next.id, last_activity_at: Date.now() });
-  await channel.send(`Ticket category changed to **${next.name}** by <@${memberId(member)}>.`);
+  const ownerName = (await channel.guild.client.users.fetch(ticket.owner_id).catch(() => null))?.username || 'member';
+  await channel.setName(ticketChannelName(config, next, ticket.id, ownerName)).catch((error) => {
+    console.warn(`[tickets] Unable to apply category prefix for ticket #${ticket.id}: ${error.message}`);
+  });
+  await channel.send(`Ticket category changed to **${next.name}** by <@${memberId(member)}>.`).catch((error) => {
+    console.warn(`[tickets] Unable to post category-change announcement for #${ticket.id}: ${error.message}`);
+  });
+  await syncTicketPresentation({ guild: channel.guild, db, config });
   return db.getTicketById(ticket.id);
 }
 
@@ -328,39 +395,51 @@ export async function renameTicket({ ticket, channel, member, name, db, config }
   await channel.send(`Ticket renamed to **#${newName}** by <@${memberId(member)}>.`);
 }
 
-export async function markActivity({ ticket, author, db, config }) {
+export async function markActivity({ ticket, author, db, config, guild = null }) {
   if (!ticket || !activeStatuses.has(ticket.status)) return;
   const stamp = Date.now();
   const patch = { last_activity_at: stamp, inactivity_alerted_at: null };
+  let autoClaimed = false;
   if (!ticket.first_response_at && author.id !== ticket.owner_id && isStaff(author, config, categoryForTicket(ticket, config))) {
     patch.first_response_at = stamp;
     db.logStaffEvent({ guildId: ticket.guild_id, ticketId: ticket.id, staffId: author.id, action: 'response' });
     if (config.ticketing.claims?.autoClaimOnFirstResponse && !ticket.claimed_by) {
       patch.claimed_by = author.id;
+      patch.status = 'open';
+      autoClaimed = true;
       db.logStaffEvent({ guildId: ticket.guild_id, ticketId: ticket.id, staffId: author.id, action: 'claim' });
     }
   }
   db.updateTicket(ticket.id, patch);
+  if (autoClaimed && guild) {
+    await syncTicketPresentation({ guild, db, config });
+  }
 }
 
 export async function takeNextQueuedTicket({ guild, member, db, config }) {
-  const queue = db.queueList(guild.id).filter((item) => isStaff(member, config, categoryForTicket(item, config)));
-  if (!queue.length) {
-    if (!isStaff(member, config)) throw new Error('Only support staff can take queued tickets.');
-    throw new Error('There are no queued tickets assigned to a support category you can access.');
+  while (true) {
+    const queue = db.queueList(guild.id, config.priorityLevels)
+      .filter((item) => isStaff(member, config, categoryForTicket(item, config)));
+    if (!queue.length) {
+      if (!isStaff(member, config)) throw new Error('Only support staff can take queued tickets.');
+      throw new Error('There are no queued tickets assigned to a support category you can access.');
+    }
+
+    const ticket = queue[0];
+    const channel = await guild.channels.fetch(ticket.channel_id).catch(() => null);
+    if (!channel) {
+      db.updateTicket(ticket.id, { status: 'closed', closed_at: Date.now(), close_reason: 'Ticket channel was missing during queue processing.' });
+      await syncTicketPresentation({ guild, db, config });
+      continue;
+    }
+
+    const claimed = await claimTicket({ ticket, channel, member, db, config, allowQueueJump: true });
+    return { ticket: claimed, channel, position: 1 };
   }
-  const ticket = queue[0];
-  const channel = await guild.channels.fetch(ticket.channel_id).catch(() => null);
-  if (!channel) {
-    db.updateTicket(ticket.id, { status: 'closed', closed_at: Date.now(), close_reason: 'Ticket channel was missing during queue processing.' });
-    return takeNextQueuedTicket({ guild, member, db, config });
-  }
-  const claimed = await claimTicket({ ticket, channel, member, db, config, allowQueueJump: true });
-  return { ticket: claimed, channel, position: 1 };
 }
 
 export function listQueue(db, guildId, config) {
-  return db.queueList(guildId).map((ticket, index) => ({ ...ticket, position: index + 1, category: getCategory(config, ticket.category_id)?.name ?? ticket.category_id }));
+  return db.queueList(guildId, config.priorityLevels).map((ticket, index) => ({ ...ticket, position: index + 1, category: getCategory(config, ticket.category_id)?.name ?? ticket.category_id }));
 }
 
 export async function runInactivityMonitor(client) {
@@ -392,6 +471,5 @@ export async function runInactivityMonitor(client) {
 
 export function formatTicketSummary(ticket, config) {
   const category = getCategory(config, ticket.category_id);
-  const priority = config.priorityLevels.find((level) => level.id === ticket.priority);
-  return `#${ticket.id} · ${category?.name ?? ticket.category_id} · ${priority?.emoji ?? ''} ${ticket.priority} · <@${ticket.owner_id}>`;
+  return `#${ticket.id} · ${category?.name ?? ticket.category_id} · ${formatPriority(ticket.priority, config.priorityLevels)} · <@${ticket.owner_id}>`;
 }
