@@ -79,9 +79,13 @@ Once online, run `/ticket-panel` in the channel where users should open tickets.
 | `channels.ticketLogsId` | Channel where ticket events are logged |
 | `ticketing.categories` | The ticket categories shown in the panel |
 | `ticketing.channelPrefix` | Prefix for new and reopened ticket channels (default: `ticket-`; for example, `support-`) |
+| `ticketing.categories[].channelPrefix` | Optional per-category prefix such as `general-`; an empty value inherits `ticketing.channelPrefix` |
 | `ticketing.maxOpenPerUser` | Max open tickets per user (`0` = unlimited) |
 | `ticketing.creationCooldownSeconds` | Minimum seconds between ticket opens |
 | `ticketing.queue.enabled` | Turn the persistent queue on or off |
+| `ticketing.queue.strictOrder` | Only allow claiming the highest-ranked waiting ticket |
+| `ticketing.queue.display` | Optional priority-ordered queue embed, automatically created/edited in `channelId` and refreshed on the configured interval; its message ID is persisted in SQLite so restarts edit the same message |
+| `priorityLevels[].rank` | Numeric priority weight; higher ranks sort before lower ranks, with oldest tickets first within the same rank |
 | `ticketing.queue.staffCapacity` | Max active claims per staff member (`0` = no cap) |
 | `ticketing.workingHours` | Restrict ticket opening to a time schedule |
 | `ticketing.inactivityMonitor` | Alert staff on stale tickets |
@@ -90,7 +94,7 @@ Once online, run `/ticket-panel` in the channel where users should open tickets.
 | `features.suggestions` | Enable the suggestion workflow |
 | `features.reviews` | Let users rate their support experience |
 
-Category IDs must be letters, digits, underscores, or hyphens (max 40 chars). Each category can have a `parentCategoryId`, `supportRoleIds`, `requiredRoleIds`, and up to three `questions`.
+Category IDs must be letters, digits, underscores, or hyphens (max 40 chars). Each category can have a `parentCategoryId`, `supportRoleIds`, `requiredRoleIds`, and up to three `questions`. Each category can also set `channelPrefix` to override the global prefix; for example, `channelPrefix`: `general-` gives that category channels such as `general-12-someone`. Configure the optional queue embed under `ticketing.queue.display`; set `enabled`, `type: "embed"`, and a text `channelId`. The bot creates the message on first use and edits the stored message on restarts and at `refreshIntervalSeconds`.
 
 ## Commands
 
