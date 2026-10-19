@@ -40,7 +40,8 @@ export async function createTicket({ guild, user, member, categoryId, answers, d
   if (description) normalizedAnswers['Additional details'] = truncate(description, 1000);
 
   const safeOwner = safeChannelName(user.username || 'member').slice(0, 32);
-  const channelName = `ticket-${safeOwner}`;
+  const channelPrefix = config.ticketing.channelPrefix ?? 'ticket-';
+  const channelName = safeChannelName(`${channelPrefix}${safeOwner}`);
   const overwrites = [
     { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
     { id: user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.AttachFiles, PermissionFlagsBits.EmbedLinks] },
@@ -246,7 +247,9 @@ export async function reopenTicket({ ticket, channel, member, db, config }) {
   if (!isStaff(member, config, category) && ticket.owner_id !== memberId(member)) throw new Error('You cannot reopen this ticket.');
   const nextStatus = config.ticketing.queue?.enabled ? 'queued' : 'open';
   db.updateTicket(ticket.id, { status: nextStatus, claimed_by: null, closed_at: null, closed_by: null, close_reason: null, last_activity_at: Date.now() });
-  await channel.setName(safeChannelName(`ticket-${ticket.id}-${(await channel.guild.client.users.fetch(ticket.owner_id).catch(() => null))?.username || 'member'}`).slice(0, 100)).catch(() => {});
+  const ownerName = (await channel.guild.client.users.fetch(ticket.owner_id).catch(() => null))?.username || 'member';
+  const channelPrefix = config.ticketing.channelPrefix ?? 'ticket-';
+  await channel.setName(safeChannelName(`${channelPrefix}${ticket.id}-${ownerName}`).slice(0, 100)).catch(() => {});
   await channel.permissionOverwrites.edit(ticket.owner_id, { ViewChannel: true, SendMessages: true, ReadMessageHistory: true }).catch(() => {});
   for (const userId of db.listParticipants(ticket.id)) {
     if (userId !== ticket.owner_id) await channel.permissionOverwrites.edit(userId, { ViewChannel: true, SendMessages: true, ReadMessageHistory: true }).catch(() => {});
