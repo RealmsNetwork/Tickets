@@ -1,4 +1,4 @@
-import { sortTicketsByPriority } from '../utils/priority.js';
+import { compareTicketsByPriority } from '../utils/priority.js';
 
 /**
  * Reorders only the positions already occupied by ticket channels in each
@@ -16,7 +16,12 @@ export function buildPriorityPositionUpdates(entries, priorityLevels = []) {
   for (const group of groups.values()) {
     if (group.length < 2) continue;
     const slots = group.map((entry) => Number(entry.channel.position)).sort((a, b) => a - b);
-    const orderedTickets = sortTicketsByPriority(group.map((entry) => entry.ticket), priorityLevels);
+    const orderedTickets = group.map((entry) => entry.ticket).sort((a, b) => {
+      const aActive = a.status === 'open' || a.status === 'queued';
+      const bActive = b.status === 'open' || b.status === 'queued';
+      if (aActive !== bActive) return aActive ? -1 : 1;
+      return compareTicketsByPriority(a, b, priorityLevels);
+    });
     const entriesById = new Map(group.map((entry) => [Number(entry.ticket.id), entry]));
 
     orderedTickets.forEach((ticket, index) => {
