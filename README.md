@@ -49,6 +49,8 @@ DISCORD_CLIENT_ID=your_application_id
 
 On first start, `config/settings.json` is created automatically from `config/settings.example.json`. Open it and set your role IDs, channel IDs, and ticket category parent channel IDs before inviting the bot to your server.
 
+On later starts, missing settings are automatically added from the sample config without overwriting existing custom values.
+
 Deploy slash commands:
 
 ```sh
@@ -76,6 +78,7 @@ Once online, run `/ticket-panel` in the channel where users should open tickets.
 | `permissions.adminRoleIds` | Roles with full admin access |
 | `channels.ticketLogsId` | Channel where ticket events are logged |
 | `ticketing.categories` | The ticket categories shown in the panel |
+| `ticketing.channelPrefix` | Prefix for new and reopened ticket channels (default: `ticket-`; for example, `support-`) |
 | `ticketing.maxOpenPerUser` | Max open tickets per user (`0` = unlimited) |
 | `ticketing.creationCooldownSeconds` | Minimum seconds between ticket opens |
 | `ticketing.queue.enabled` | Turn the persistent queue on or off |
