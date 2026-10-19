@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { compareTicketsByPriority, formatPriority, getPriorityRank, sortTicketsByPriority } from '../src/utils/priority.js';
+import { buildPriorityPositionUpdates } from '../src/services/ticket-ordering.js';
 
 const priorityLevels = [
   { id: 'low', label: 'Low', rank: 1, emoji: '🟢' },
@@ -38,4 +39,21 @@ test('unknown or unranked priorities fall below configured priorities', () => {
 test('priority display uses configured emoji and label', () => {
   assert.equal(formatPriority('urgent', priorityLevels), '🔴 Urgent');
   assert.equal(formatPriority('custom', priorityLevels), 'custom');
+});
+
+test('channel ordering sorts tickets into their existing positions within each parent', () => {
+  const entries = [
+    { ticket: { id: 1, priority: 'low', created_at: 1 }, channel: { id: 'low-channel', parentId: 'support', position: 2 } },
+    { ticket: { id: 2, priority: 'urgent', created_at: 2 }, channel: { id: 'urgent-channel', parentId: 'support', position: 4 } },
+    { ticket: { id: 3, priority: 'high', created_at: 3 }, channel: { id: 'high-channel', parentId: 'support', position: 3 } },
+    { ticket: { id: 4, priority: 'urgent', created_at: 4 }, channel: { id: 'other-category', parentId: 'billing', position: 1 } }
+  ];
+
+  assert.deepEqual(
+    buildPriorityPositionUpdates(entries, priorityLevels),
+    [
+      { channel: 'urgent-channel', position: 2 },
+      { channel: 'low-channel', position: 4 }
+    ]
+  );
 });
